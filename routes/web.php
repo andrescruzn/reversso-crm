@@ -7,7 +7,7 @@ use App\Modules\Logistics\Presentation\Http\Controllers\{
     DashboardController,
     TimeTrackingController,
     AttendanceController,
-    LogisticsAdminController
+    LogisticsAdminController // <--- Asegúrate que este esté importado
 };
 
 Route::get('/', fn() => redirect()->route('login'));
@@ -17,9 +17,11 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::middleware(['auth'])->group(function () {
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-    // MÓDULO: ASISTENCIA (Control de Jornadas - HH)
+    // CORRECCIÓN 1: Logout ahora acepta GET y POST para que no te de error 405
+    Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
+
+    // MÓDULO: ASISTENCIA
     Route::prefix('attendance')->name('attendance.')->group(function () {
         Route::post('/check-in', [AttendanceController::class, 'checkIn'])->name('checkin');
         Route::post('/check-out', [AttendanceController::class, 'checkOut'])->name('checkout');
@@ -30,7 +32,7 @@ Route::middleware(['auth'])->group(function () {
         });
     });
 
-    // MÓDULO: LOGÍSTICA (Gestión de Viajes/Tracking - KM)
+    // MÓDULO: LOGÍSTICA
     Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/', function (Request $request) {
             return auth()->user()->hasRole('Administrador')
@@ -45,10 +47,13 @@ Route::middleware(['auth'])->group(function () {
 
         // Acciones del Administrador
         Route::middleware(['role:Administrador'])->group(function () {
-            Route::get('/export/tracking', [LogisticsAdminController::class, 'exportTracking'])->name('export.tracking');
-            Route::post('/approve/{id}', [TimeTrackingController::class, 'approve'])->name('approve');
 
-            // RUTA PARA DESAPROBAR
+            // CORRECCIÓN 2: Apuntar al controlador correcto (LogisticsAdminController)
+            Route::get('/export/tracking', [LogisticsAdminController::class, 'exportTracking'])->name('export.tracking');
+
+            // AQUÍ ESTABA EL ERROR: Antes decía TimeTrackingController
+            Route::post('/approve/{id}', [LogisticsAdminController::class, 'approve'])->name('approve');
+
             Route::post('/disapprove/{id}', [LogisticsAdminController::class, 'disapprove'])->name('disapprove');
 
             Route::get('/trip/{id}', [LogisticsAdminController::class, 'showTrip'])->name('trip.show');

@@ -38,11 +38,9 @@ class LogisticsAdminController extends Controller
 
             $drivers = User::whereHas('roles', fn($q) => $q->where('roles.id', 2))->orderBy('name')->get();
 
-            // 1. CONDUCTORES EN RUTA
             $driversInRoute = $this->trackingRepository->getAllActiveWithUsers($search) ?? collect();
             $idsInRoute = $driversInRoute->pluck('user_id')->toArray();
 
-            // 2. EN PLANTA
             $onlyAttendance = DB::table('user_attendance')
                 ->join('users', 'users.id', '=', 'user_attendance.user_id')
                 ->whereDate('user_attendance.check_in', Carbon::today('America/Bogota')->toDateString())
@@ -54,7 +52,6 @@ class LogisticsAdminController extends Controller
                 ->select('users.id as user_id', 'users.name as user_name', 'user_attendance.check_in as start_time')
                 ->get();
 
-            // 3. HISTORIAL
             $query = TimeTracking::with('user')->whereNotNull('end_time')->whereBetween('end_time', [$fromDate, $toDate]);
 
             if ($status === 'approved') {
@@ -90,31 +87,45 @@ class LogisticsAdminController extends Controller
                 ]
             ]);
         } catch (Exception $e) {
-            dd("Error: " . $e->getMessage());
+            dd("Error en Index: " . $e->getMessage());
         }
     }
 
     public function approve(Request $request, int $id): RedirectResponse
     {
-        DB::table('time_tracking')->where('id', $id)->update([
-            'approved_at' => now(),
-            'approved_by' => Auth::id()
-        ]);
+        $trip = TimeTracking::findOrFail($id);
 
-        $params = $request->only(['from', 'to', 'status', 'search', 'trips_page']);
-        return redirect()->to(route('logistics.index') . '?' . http_build_query($params))
+        // VALIDACIÓN BD: Si ya está aprobado, no hacer nada para evitar doble registro
+        if ($trip->approved_at !== null && $trip->approved_by !== 0) {
+            return redirect()->to(route('logistics.index') . '?' . http_build_query($request->only(['from', 'to', 'status', 'search', 'trips_page'])))
+                ->with('warning', 'Este trayecto ya estaba aprobado.');
+        }
+
+        // USO DIRECTO DE PROPIEDADES PARA EVITAR $fillable
+        $trip->approved_at = now();
+        $trip->approved_by = Auth::id();
+        $trip->save();
+
+        return redirect()->to(route('logistics.index') . '?' . http_build_query($request->only(['from', 'to', 'status', 'search', 'trips_page'])))
             ->with('success', 'Trayecto aprobado.');
     }
 
     public function disapprove(Request $request, int $id): RedirectResponse
     {
-        DB::table('time_tracking')->where('id', $id)->update([
-            'approved_by' => 0,
-            'approved_at' => null
-        ]);
+        $trip = TimeTracking::findOrFail($id);
 
-        $params = $request->only(['from', 'to', 'status', 'search', 'trips_page']);
-        return redirect()->to(route('logistics.index') . '?' . http_build_query($params))
+        // VALIDACIÓN BD: Si ya está desaprobado, avisar
+        if ($trip->approved_by === 0) {
+            return redirect()->to(route('logistics.index') . '?' . http_build_query($request->only(['from', 'to', 'status', 'search', 'trips_page'])))
+                ->with('warning', 'Este trayecto ya estaba desaprobado.');
+        }
+
+        // USO DIRECTO DE PROPIEDADES
+        $trip->approved_at = null;
+        $trip->approved_by = 0; // 0 indica desaprobado según tu lógica
+        $trip->save();
+
+        return redirect()->to(route('logistics.index') . '?' . http_build_query($request->only(['from', 'to', 'status', 'search', 'trips_page'])))
             ->with('success', 'Trayecto desaprobado.');
     }
 
@@ -122,8 +133,11 @@ class LogisticsAdminController extends Controller
     {
         $search = $request->get('search');
         $status = $request->get('status');
-        $fromDate = $request->get('from') ? Carbon::parse($request->get('from'))->startOfDay() : now()->startOfMonth();
-        $toDate = $request->get('to') ? Carbon::parse($request->get('to'))->endOfDay() : now();
+        $fromDateStr = $request->get('from');
+        $toDateStr = $request->get('to');
+
+        $fromDate = $fromDateStr ? Carbon::parse($fromDateStr)->startOfDay() : Carbon::today('America/Bogota')->startOfDay();
+        $toDate = $toDateStr ? Carbon::parse($toDateStr)->endOfDay() : Carbon::today('America/Bogota')->endOfDay();
 
         $query = TimeTracking::with('user')->whereNotNull('end_time')->whereBetween('end_time', [$fromDate, $toDate]);
 
@@ -139,13 +153,17 @@ class LogisticsAdminController extends Controller
             $file = fopen('php://output', 'w');
             fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
             fputcsv($file, ['ID', 'CONDUCTOR', 'RUTA', 'DISTANCIA', 'FECHA FIN', 'ESTADO']);
+
             foreach ($trips as $t) {
                 $dist = ($t->end_odometer && $t->start_odometer) ? ($t->end_odometer - $t->start_odometer) : 0;
                 $estadoTexto = ($t->approved_by === 0) ? 'DESAPROBADO' : ($t->approved_at ? 'AUDITADO/APROBADO' : 'PENDIENTE');
-                fputcsv($file, [$t->id, $t->user->name ?? 'N/A', $t->origin . ' → ' . $t->destination, $dist . ' KM', $t->end_time, $estadoTexto]);
+                fputcsv($file, [$t->id, $t->user->name ?? 'N/A', $t->origin . ' - ' . $t->destination, $dist . ' KM', $t->end_time, $estadoTexto]);
             }
             fclose($file);
-        }, 200, ['Content-Type' => 'text/csv', 'Content-Disposition' => 'attachment; filename="reporte_logistica.csv"']);
+        }, 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="reporte_logistica.csv"'
+        ]);
     }
 
     public function showTrip(int $id): View
