@@ -5,7 +5,7 @@
 @section('content')
 <div class="max-w-6xl mx-auto px-2 md:px-0">
 
-    {{-- AVISO DE JORNADA CERRADA: Más compacto en móvil --}}
+    {{-- AVISO DE JORNADA CERRADA --}}
     @if(empty($activeAttendance))
     <div class="mb-8 p-6 md:p-8 bg-orange-50 border-2 border-dashed border-orange-200 rounded-[30px] flex flex-col items-center text-center animate-pulse">
         <div class="w-10 h-10 bg-orange-200 rounded-full flex items-center justify-center text-orange-600 mb-4 font-black">!</div>
@@ -15,10 +15,9 @@
     </div>
     @endif
 
-    {{-- CONTENEDOR DE OPERACIONES --}}
     <div class="{{ (empty($activeAttendance)) ? 'opacity-30 pointer-events-none grayscale' : '' }} transition-all duration-500">
 
-        {{-- HEADER DEL PANEL RESPONSIVE --}}
+        {{-- HEADER DEL PANEL --}}
         <div class="mb-6 md:mb-8 bg-reversso rounded-[35px] md:rounded-[40px] p-6 md:p-10 shadow-2xl text-white relative overflow-hidden">
             <div class="relative z-10">
                 <div class="flex items-center gap-3 mb-2">
@@ -39,13 +38,12 @@
                     @endif
                 </div>
             </div>
-            <div class="absolute -right-10 -bottom-10 w-48 h-48 md:w-64 md:h-64 bg-white/10 rounded-full blur-3xl"></div>
         </div>
 
         {{-- MÉTRICAS RÁPIDAS --}}
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div class="bg-white rounded-[30px] p-6 md:p-8 shadow-sm border border-gray-100">
-                <p class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">KM Recorridos en Fecha</p>
+                <p class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">KM Recorridos en el periodo</p>
                 <div class="flex items-baseline justify-between">
                     <span class="text-3xl md:text-4xl font-black text-reversso">{{ number_format($metrics['total_km'] ?? 0, 1) }}</span>
                     <span class="text-[10px] font-bold text-gray-400 italic">KM TOTALES</span>
@@ -53,52 +51,53 @@
             </div>
         </div>
 
-        {{-- HISTORIAL DE VIAJES: Tabla en Desktop / Cards en Mobile --}}
+        {{-- HISTORIAL DE VIAJES --}}
         <div class="bg-white shadow-sm rounded-[35px] md:rounded-[40px] border border-gray-100 overflow-hidden mb-12">
             <div class="px-6 md:px-10 py-6 md:py-7 border-b border-gray-50 bg-gray-50/30 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div class="text-center md:text-left">
                     <h3 class="font-black text-gray-900 text-base md:text-lg tracking-tighter uppercase italic">Historial de Viajes</h3>
                     <p class="text-[9px] md:text-[10px] font-black text-reversso uppercase italic tracking-widest">
-                        {{ \Carbon\Carbon::parse($selectedDate ?? now())->translatedFormat('d \d\e F, Y') }}
+                        Rango: {{ \Carbon\Carbon::parse($fromDate)->format('d/m/Y') }} al {{ \Carbon\Carbon::parse($toDate)->format('d/m/Y') }}
                     </p>
                 </div>
 
-                {{-- FILTRO DE FECHA --}}
-                <form action="{{ route('logistics.index') }}" method="GET" class="flex items-center gap-2 w-full md:w-auto justify-center">
-                    <input type="date" name="date" value="{{ $selectedDate ?? now()->toDateString() }}"
-                        class="bg-gray-100 border-none rounded-xl px-4 py-2 text-[10px] font-black uppercase focus:ring-2 focus:ring-reversso w-full md:w-auto">
-                    <button type="submit" class="bg-gray-900 text-white p-2.5 rounded-xl hover:bg-black transition-all shadow-lg">
+                {{-- FILTRO --}}
+                <form action="{{ route('logistics.index') }}" method="GET" class="flex flex-wrap items-center gap-2 justify-center">
+                    <input type="date" name="from" value="{{ $fromDate }}" class="bg-gray-100 border-none rounded-xl px-3 py-2 text-[10px] font-black">
+                    <input type="date" name="to" value="{{ $toDate }}" class="bg-gray-100 border-none rounded-xl px-3 py-2 text-[10px] font-black">
+                    <input type="text" name="search" value="{{ $search }}" placeholder="BUSCAR..." class="bg-gray-100 border-none rounded-xl px-4 py-2 text-[10px] font-black w-32 md:w-auto">
+                    <button type="submit" class="bg-gray-900 text-white p-2.5 rounded-xl hover:bg-black transition-all">
                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                     </button>
+                    @if(request('from')) <a href="{{ route('logistics.index') }}" class="text-[9px] font-black text-gray-400 uppercase">Limpiar</a> @endif
                 </form>
             </div>
 
-            {{-- VISTA DESKTOP: Tabla --}}
-            <div class="hidden md:block overflow-x-auto">
+            {{-- TABLA --}}
+            <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-100">
                     <thead>
                         <tr class="bg-gray-50/50">
-                            <th class="px-10 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Trayecto Operativo</th>
-                            <th class="px-10 py-4 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">Hora Inicio</th>
-                            <th class="px-10 py-4 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">Distancia</th>
+                            <th class="px-10 py-4 text-left text-[10px] font-black text-gray-400 uppercase">Fecha</th>
+                            <th class="px-10 py-4 text-left text-[10px] font-black text-gray-400 uppercase">Trayecto</th>
+                            <th class="px-10 py-4 text-center text-[10px] font-black text-gray-400 uppercase">Inicio</th>
+                            <th class="px-10 py-4 text-center text-[10px] font-black text-gray-400 uppercase">Distancia</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-50">
                         @forelse($todayTrips as $trip)
                         <tr class="hover:bg-gray-50/50 transition-colors">
+                            <td class="px-10 py-5 text-[10px] font-black text-gray-400">{{ \Carbon\Carbon::parse($trip->date)->format('d/m/Y') }}</td>
                             <td class="px-10 py-5">
                                 <div class="text-sm font-black text-gray-900 uppercase tracking-tighter">{{ $trip->origin }}</div>
-                                <div class="text-[10px] text-reversso font-bold italic">→ {{ $trip->destination ?? 'En tránsito...' }}</div>
+                                <div class="text-[10px] text-reversso font-bold italic">→ {{ $trip->destination ?? 'En curso...' }}</div>
                             </td>
-                            <td class="px-10 py-5 text-center text-xs font-black text-gray-600">
-                                {{ \Carbon\Carbon::parse($trip->start_time)->format('h:i A') }}
-                            </td>
+                            <td class="px-10 py-5 text-center text-xs font-black text-gray-600">{{ \Carbon\Carbon::parse($trip->start_time)->format('h:i A') }}</td>
                             <td class="px-10 py-5 text-center">
                                 @if($trip->end_odometer)
-                                <span class="text-sm font-black text-gray-900">{{ number_format($trip->end_odometer - $trip->start_odometer, 1) }}</span>
-                                <span class="text-[9px] font-bold text-gray-400 uppercase">Km</span>
+                                <span class="text-sm font-black text-gray-900">{{ number_format($trip->end_odometer - $trip->start_odometer, 1) }}</span> <span class="text-[9px] font-bold text-gray-400 uppercase">Km</span>
                                 @else
                                 <span class="text-[10px] font-black text-orange-500 animate-pulse uppercase italic">En curso</span>
                                 @endif
@@ -106,37 +105,11 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="3" class="px-10 py-20 text-center text-xs font-bold text-gray-400 uppercase italic">Sin registros</td>
+                            <td colspan="4" class="px-10 py-20 text-center text-xs font-bold text-gray-400 uppercase italic">Sin registros</td>
                         </tr>
                         @endforelse
                     </tbody>
                 </table>
-            </div>
-
-            {{-- VISTA MOBILE: Cards --}}
-            <div class="md:hidden divide-y divide-gray-100">
-                @forelse($todayTrips as $trip)
-                <div class="p-6">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-[10px] font-black text-gray-600 uppercase">{{ \Carbon\Carbon::parse($trip->start_time)->format('h:i A') }}</span>
-                        @if(!$trip->end_odometer)
-                        <span class="text-[8px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full uppercase animate-pulse italic">En tránsito</span>
-                        @endif
-                    </div>
-                    <div class="mb-3">
-                        <div class="text-xs font-black text-gray-900 uppercase tracking-tight">{{ $trip->origin }}</div>
-                        <div class="text-[10px] text-reversso font-bold italic">→ {{ $trip->destination ?? '...' }}</div>
-                    </div>
-                    @if($trip->end_odometer)
-                    <div class="text-right">
-                        <span class="text-sm font-black text-gray-900">{{ number_format($trip->end_odometer - $trip->start_odometer, 1) }}</span>
-                        <span class="text-[9px] font-bold text-gray-400 uppercase">Km Totales</span>
-                    </div>
-                    @endif
-                </div>
-                @empty
-                <div class="p-10 text-center text-[10px] font-black text-gray-300 uppercase italic">Sin registros</div>
-                @endforelse
             </div>
 
             @if($todayTrips->hasPages())
@@ -148,7 +121,7 @@
     </div>
 </div>
 
-{{-- MODALS RESPONSIVE --}}
+{{-- MODALS --}}
 <div id="modal-start" class="hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="toggleModal('modal-start')"></div>
     <div class="relative bg-white w-full max-w-md rounded-t-[30px] sm:rounded-[30px] p-8 md:p-10 shadow-2xl">
@@ -156,16 +129,10 @@
             @csrf
             <h3 class="text-xl md:text-2xl font-black text-gray-900 mb-6 uppercase italic tracking-tighter text-center">Iniciar Viaje</h3>
             <div class="space-y-4">
-                <div class="space-y-1">
-                    <label class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest italic">Origen</label>
-                    <input type="text" name="origin" required placeholder="Ej: Bodega Central" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold text-sm focus:ring-2 focus:ring-reversso outline-none">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest italic">Kilometraje Inicial</label>
-                    <input type="number" name="start_odometer" required placeholder="00000" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold text-sm focus:ring-2 focus:ring-reversso outline-none" inputmode="numeric">
-                </div>
+                <input type="text" name="origin" required placeholder="Origen" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold">
+                <input type="number" name="start_odometer" required placeholder="Kilometraje Inicial" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold">
             </div>
-            <button type="submit" class="w-full mt-8 bg-gray-900 text-white font-black py-4 rounded-xl uppercase text-xs tracking-widest shadow-xl active:scale-95 transition-all">Confirmar Salida</button>
+            <button type="submit" class="w-full mt-8 bg-gray-900 text-white font-black py-4 rounded-xl uppercase text-xs tracking-widest shadow-xl">Confirmar Salida</button>
         </form>
     </div>
 </div>
@@ -179,16 +146,10 @@
             <input type="hidden" name="id" value="{{ $activeTracking->id }}">
             <h3 class="text-xl md:text-2xl font-black text-gray-900 mb-6 uppercase italic tracking-tighter text-center">Finalizar Viaje</h3>
             <div class="space-y-4">
-                <div class="space-y-1">
-                    <label class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest italic">Destino</label>
-                    <input type="text" name="destination" required placeholder="Ej: Entrega Cliente A" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold text-sm focus:ring-2 focus:ring-reversso outline-none">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest italic">Kilometraje Final</label>
-                    <input type="number" name="end_odometer" required placeholder="00000" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold text-sm focus:ring-2 focus:ring-reversso outline-none" inputmode="numeric">
-                </div>
+                <input type="text" name="destination" required placeholder="Destino" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold">
+                <input type="number" name="end_odometer" required placeholder="Kilometraje Final" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold">
             </div>
-            <button type="submit" class="w-full mt-8 bg-reversso text-white font-black py-4 rounded-xl uppercase text-xs tracking-widest shadow-xl active:scale-95 transition-all">Cerrar Registro</button>
+            <button type="submit" class="w-full mt-8 bg-reversso text-white font-black py-4 rounded-xl uppercase text-xs tracking-widest shadow-xl">Cerrar Registro</button>
         </form>
     </div>
 </div>
