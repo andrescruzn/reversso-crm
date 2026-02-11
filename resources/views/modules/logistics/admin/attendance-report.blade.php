@@ -38,7 +38,8 @@
         </div>
 
         <button type="submit" class="bg-[#ff5a1f] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition-all shadow-lg shadow-orange-100">Filtrar</button>
-        <a href="{{ route('logistics.index') }}" class="bg-[#f3f4f6] text-gray-500 px-8 py-3 rounded-2xl text-[10px] font-black uppercase text-center tracking-widest hover:bg-gray-200 transition-all">Volver</a>
+
+        <a href="{{ route('attendance.report') }}" class="bg-gray-100 text-gray-500 px-8 py-3 rounded-2xl text-[10px] font-black uppercase text-center tracking-widest hover:bg-gray-200 transition-all">Limpiar Filtros</a>
     </form>
 
     {{-- TABLA --}}
@@ -47,7 +48,9 @@
             <thead>
                 <tr class="bg-gray-50/50">
                     <th class="px-8 py-5 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Colaborador</th>
-                    <th class="px-8 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">Fecha / Detalle</th>
+                    <th class="px-8 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                        {{ $filters['user_id'] ? 'Fecha / Detalle' : 'Periodo de Reporte' }}
+                    </th>
                     <th class="px-8 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">H. Regulares</th>
                     <th class="px-8 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">H. Extras / Festivas</th>
                     <th class="px-8 py-5 text-right text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Tiempo</th>
@@ -58,13 +61,15 @@
                 <tr class="hover:bg-gray-50/50 transition-colors">
                     <td class="px-8 py-5">
                         <div class="text-sm font-black text-gray-900 uppercase tracking-tighter">{{ $item->user_name }}</div>
-                        @if($item->is_holiday)
+                        @if(!$item->is_summary && $item->is_holiday)
                         <span class="inline-block mt-1 text-[8px] bg-[#ff5a1f] text-white px-2 py-0.5 rounded-full font-black uppercase italic tracking-tighter">Festivo</span>
                         @endif
                     </td>
                     <td class="px-8 py-5 text-center">
-                        <span class="text-xs text-gray-600 font-bold italic">{{ $item->date ? $item->date->format('d/m/Y') : 'Consolidado' }}</span>
-                        @if($item->check_in)
+                        @if($item->is_summary)
+                        <span class="text-[10px] text-gray-400 font-black uppercase">Acumulado del Mes</span>
+                        @else
+                        <span class="text-xs text-gray-600 font-bold italic">{{ $item->date->format('d/m/Y') }}</span>
                         <span class="block text-[10px] text-gray-400 font-black tracking-tighter uppercase mt-1">{{ $item->check_in }} - {{ $item->check_out }}</span>
                         @endif
                     </td>
@@ -91,16 +96,10 @@
                     <h3 class="text-sm font-black text-gray-900 uppercase italic">{{ $item->user_name }}</h3>
                 </div>
                 <div class="text-right">
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Fecha</p>
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Periodo</p>
                     <p class="text-xs font-bold text-gray-600 italic">{{ $item->date ? $item->date->format('d/m/Y') : 'Consolidado' }}</p>
                 </div>
             </div>
-            @if($item->check_in)
-            <div class="mb-4">
-                <p class="text-[8px] font-black text-gray-400 uppercase">Marcación</p>
-                <p class="text-[10px] font-black text-gray-500 uppercase">{{ $item->check_in }} - {{ $item->check_out }}</p>
-            </div>
-            @endif
             <div class="grid grid-cols-3 gap-2 pt-4 border-t border-gray-50">
                 <div>
                     <p class="text-[8px] font-black text-gray-400 uppercase">Reg.</p>

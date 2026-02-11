@@ -45,11 +45,11 @@ Route::middleware(['auth'])->group(function () {
 
         // Acciones del Administrador
         Route::middleware(['role:Administrador'])->group(function () {
-            // Ajustado para coincidir con el botón negro de la vista: logistics.export.tracking
             Route::get('/export/tracking', [LogisticsAdminController::class, 'exportTracking'])->name('export.tracking');
-
-            // Ajustado para coincidir con el botón verde de la tabla: logistics.approve
             Route::post('/approve/{id}', [TimeTrackingController::class, 'approve'])->name('approve');
+
+            // NUEVA RUTA PARA DESAPROBAR
+            Route::post('/disapprove/{id}', [LogisticsAdminController::class, 'disapprove'])->name('disapprove');
 
             Route::get('/trip/{id}', [LogisticsAdminController::class, 'showTrip'])->name('trip.show');
         });
