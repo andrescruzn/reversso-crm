@@ -7,8 +7,7 @@ namespace App\Modules\Logistics\Presentation\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Logistics\Overtime\Application\Services\OvertimeCalculatorService;
 use App\Modules\Logistics\TimeTracking\Infrastructure\Persistence\EloquentTimeTrackingRepository;
-use App\Modules\Logistics\TimeTracking\Infrastructure\Models\TimeTracking;
-use Illuminate\Http\Request;
+use Illuminate\Http\Request; // Importación crucial para solucionar el ArgumentCountError
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -22,58 +21,13 @@ class DashboardController extends Controller
     ) {}
 
     /**
-     * Módulo de Logística con soporte de filtros por rango de fecha
+     * Home principal del CRM
      */
-    public function index(Request $request): View
+    public function index(): View
     {
-        $user = Auth::user();
-
-        // 1. Capturar parámetros de fecha. Si no vienen, usamos hoy.
-        $fromDate = $request->get('from', Carbon::today('America/Bogota')->toDateString());
-        $toDate = $request->get('to', Carbon::today('America/Bogota')->toDateString());
-        $search = $request->get('search');
-
-        // 2. Consulta de recorridos finalizados con filtros y paginación
-        $todayTrips = TimeTracking::where('user_id', $user->id)
-            ->whereBetween('date', [$fromDate, $toDate])
-            ->when($search, function ($query, $search) {
-                return $query->where(function ($q) use ($search) {
-                    $q->where('origin', 'like', "%{$search}%")
-                        ->orWhere('destination', 'like', "%{$search}%");
-                });
-            })
-            ->orderBy('start_time', 'desc')
-            ->paginate(10)
-            ->withQueryString();
-
-        // 3. Cálculo de métricas para el periodo seleccionado
-        $totalKm = (float) TimeTracking::where('user_id', $user->id)
-            ->whereBetween('date', [$fromDate, $toDate])
-            ->whereNotNull('end_odometer')
-            ->selectRaw('SUM(end_odometer - start_odometer) as total')
-            ->value('total') ?? 0.0;
-
-        $metrics = [
-            'total_km' => $totalKm
-        ];
-
-        // 4. Obtener asistencia y tracking activo
-        $activeTracking = $this->trackingRepository->findActiveByUser((int)$user->id);
-
-        $activeAttendance = DB::table('user_attendance')
-            ->where('user_id', $user->id)
-            ->whereNull('end_time')
-            ->first();
-
-        return view('modules.logistics.dashboard', [
-            'user' => $user,
-            'todayTrips' => $todayTrips,
-            'fromDate' => $fromDate,
-            'toDate' => $toDate,
-            'search' => $search,
-            'activeTracking' => $activeTracking,
-            'activeAttendance' => $activeAttendance,
-            'metrics' => $metrics
+        return view('crm.home', [
+            'user' => Auth::user(),
+            'activeAttendance' => $this->getActiveAttendance()
         ]);
     }
 
