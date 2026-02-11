@@ -48,7 +48,7 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/export/tracking', [LogisticsAdminController::class, 'exportTracking'])->name('export.tracking');
             Route::post('/approve/{id}', [TimeTrackingController::class, 'approve'])->name('approve');
 
-            // NUEVA RUTA PARA DESAPROBAR
+            // RUTA PARA DESAPROBAR
             Route::post('/disapprove/{id}', [LogisticsAdminController::class, 'disapprove'])->name('disapprove');
 
             Route::get('/trip/{id}', [LogisticsAdminController::class, 'showTrip'])->name('trip.show');

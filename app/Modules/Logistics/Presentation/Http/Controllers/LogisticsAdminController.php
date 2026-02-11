@@ -29,57 +29,54 @@ class LogisticsAdminController extends Controller
     {
         try {
             $search = $request->get('search');
+            $status = $request->get('status'); // Filtro de Auditoría
             $fromDateStr = $request->get('from');
             $toDateStr = $request->get('to');
 
-            // Filtro de fecha (Default: Hoy - Bogotá)
             $fromDate = $fromDateStr ? Carbon::parse($fromDateStr)->startOfDay() : Carbon::today('America/Bogota')->startOfDay();
             $toDate = $toDateStr ? Carbon::parse($toDateStr)->endOfDay() : Carbon::today('America/Bogota')->endOfDay();
 
             $drivers = User::whereHas('roles', fn($q) => $q->where('roles.id', 2))->orderBy('name')->get();
 
-            // 1. ESTADO EN VIVO (Independiente del filtro de historial)
-            $driversInRoute = $this->trackingRepository->getAllActiveWithUsers($search) ?? collect();
-            $idsInRoute = $driversInRoute->pluck('user_id')->toArray();
-
-            $onlyAttendance = DB::table('user_attendance')
-                ->join('users', 'users.id', '=', 'user_attendance.user_id')
-                ->whereDate('user_attendance.check_in', Carbon::today('America/Bogota')->toDateString())
-                ->whereNull('user_attendance.check_out')
-                ->whereNotIn('users.id', $idsInRoute)
-                ->when($search, function ($q) use ($search) {
-                    $q->where('users.name', 'like', "%{$search}%");
-                })
-                ->select('users.id as user_id', 'users.name as user_name', 'user_attendance.check_in as start_time')
-                ->get();
-
-            // 2. MÉTRICAS (Basadas en estado global de auditoría)
-            $pendingAuditCount = TimeTracking::whereNotNull('end_time')->whereNull('approved_at')->count();
-
-            // 3. TABLA UNIFICADA DE RECORRIDOS (Filtrada por fecha y búsqueda)
-            $history = TimeTracking::with('user')
+            // Query base de recorridos
+            $query = TimeTracking::with('user')
                 ->whereNotNull('end_time')
-                ->whereBetween('end_time', [$fromDate, $toDate])
-                ->when($search, function ($q) use ($search) {
-                    $q->whereHas('user', fn($u) => $u->where('name', 'like', "%{$search}%"));
-                })
-                ->orderBy('end_time', 'desc')
+                ->whereBetween('end_time', [$fromDate, $toDate]);
+
+            // Lógica de Filtro por Estado
+            if ($status === 'approved') {
+                $query->whereNotNull('approved_at');
+            } elseif ($status === 'disapproved') {
+                $query->where('approved_by', 0);
+            } elseif ($status === 'pending') {
+                $query->whereNull('approved_at')->where('approved_by', '!=', 0);
+            }
+
+            if ($search) {
+                $query->whereHas('user', fn($u) => $u->where('name', 'like', "%{$search}%"));
+            }
+
+            $history = $query->orderBy('end_time', 'desc')
                 ->paginate(10, ['*'], 'trips_page')
                 ->appends($request->all());
+
+            // Datos para métricas superiores
+            $driversInRoute = $this->trackingRepository->getAllActiveWithUsers($search) ?? collect();
+            $pendingAuditCount = TimeTracking::whereNotNull('end_time')->whereNull('approved_at')->where('approved_by', '!=', 0)->count();
 
             return view('modules.logistics.admin-dashboard', [
                 'user'            => Auth::user(),
                 'drivers'         => $drivers,
                 'driversInRoute'  => $driversInRoute,
-                'onlyAttendance'  => $onlyAttendance,
                 'completedToday'  => $history,
                 'totalActive'     => $driversInRoute->count(),
                 'pendingApproval' => $pendingAuditCount,
-                'attendanceToday' => $driversInRoute->count() + $onlyAttendance->count(),
+                'attendanceToday' => DB::table('user_attendance')->whereDate('check_in', today())->count(),
                 'search'          => $search,
                 'filters'         => [
-                    'from' => $fromDate->toDateString(),
-                    'to'   => $toDate->toDateString()
+                    'from'   => $fromDate->toDateString(),
+                    'to'     => $toDate->toDateString(),
+                    'status' => $status
                 ]
             ]);
         } catch (Exception $e) {
@@ -87,11 +84,22 @@ class LogisticsAdminController extends Controller
         }
     }
 
-    // MÉTODO PARA REVERTIR APROBACIÓN
+    public function approve(int $id): RedirectResponse
+    {
+        TimeTracking::findOrFail($id)->update([
+            'approved_at' => now(),
+            'approved_by' => Auth::id()
+        ]);
+        return redirect()->back()->with('success', 'Trayecto aprobado correctamente.');
+    }
+
     public function disapprove(int $id): RedirectResponse
     {
-        TimeTracking::findOrFail($id)->update(['approved_at' => null]);
-        return redirect()->back()->with('success', 'El trayecto regresó a estado pendiente.');
+        DB::table('time_tracking')->where('id', $id)->update([
+            'approved_by' => 0,
+            'approved_at' => null
+        ]);
+        return redirect()->back()->with('success', 'Trayecto desaprobado.');
     }
 
     public function exportTracking(Request $request): StreamedResponse
@@ -103,10 +111,11 @@ class LogisticsAdminController extends Controller
         return response()->stream(function () use ($trips) {
             $file = fopen('php://output', 'w');
             fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
-            fputcsv($file, ['ID', 'CONDUCTOR', 'RUTA', 'DISTANCIA', 'ESTADO']);
+            fputcsv($file, ['ID', 'CONDUCTOR', 'RUTA', 'KM', 'ESTADO']);
             foreach ($trips as $t) {
                 $dist = ($t->end_odometer && $t->start_odometer) ? ($t->end_odometer - $t->start_odometer) : 0;
-                fputcsv($file, [$t->id, $t->user->name ?? 'N/A', $t->origin . '-' . $t->destination, $dist, $t->approved_at ? 'APROBADO' : 'PENDIENTE']);
+                $estado = ($t->approved_by === 0) ? 'DESAPROBADO' : ($t->approved_at ? 'APROBADO' : 'PENDIENTE');
+                fputcsv($file, [$t->id, $t->user->name ?? 'N/A', $t->origin . '-' . $t->destination, $dist, $estado]);
             }
             fclose($file);
         }, 200, ['Content-Type' => 'text/csv', 'Content-Disposition' => 'attachment; filename="tracking.csv"']);

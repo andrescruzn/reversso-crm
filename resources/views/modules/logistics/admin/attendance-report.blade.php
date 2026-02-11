@@ -38,7 +38,6 @@
         </div>
 
         <button type="submit" class="bg-[#ff5a1f] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition-all shadow-lg shadow-orange-100">Filtrar</button>
-
         <a href="{{ route('attendance.report') }}" class="bg-gray-100 text-gray-500 px-8 py-3 rounded-2xl text-[10px] font-black uppercase text-center tracking-widest hover:bg-gray-200 transition-all">Limpiar Filtros</a>
     </form>
 
@@ -84,6 +83,11 @@
                 @endforelse
             </tbody>
         </table>
+
+        {{-- PAGINACIÓN DESKTOP --}}
+        <div class="px-8 py-6 bg-gray-50 border-t border-gray-100">
+            {{ $attendances->links() }}
+        </div>
     </div>
 
     {{-- MOBILE --}}
@@ -116,6 +120,32 @@
             </div>
         </div>
         @endforeach
+
+        {{-- PAGINACIÓN MOBILE --}}
+        <div class="pt-2 pb-10">
+            {{ $attendances->links() }}
+        </div>
     </div>
 </div>
+
+<style>
+    /* Estilos para el paginador de Tailwind */
+    .pagination nav svg {
+        width: 20px;
+    }
+
+    .pagination nav span,
+    .pagination nav a {
+        border-radius: 12px !important;
+        font-weight: 900 !important;
+        font-size: 10px !important;
+        text-transform: uppercase !important;
+        margin: 0 2px !important;
+    }
+
+    .pagination nav .bg-indigo-600 {
+        background-color: #ff5a1f !important;
+        border-color: #ff5a1f !important;
+    }
+</style>
 @endsection

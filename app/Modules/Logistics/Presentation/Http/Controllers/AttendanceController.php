@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\RedirectResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class AttendanceController extends Controller
 {
@@ -21,17 +22,18 @@ class AttendanceController extends Controller
         $filters = $this->parseFilters($request);
         $drivers = User::whereHas('roles', fn($q) => $q->where('name', '!=', 'admin'))->get();
 
-        $rawRecords = $this->getRawAttendanceQuery($filters)->get();
+        // 1. Obtenemos la query base
+        $query = $this->getRawAttendanceQuery($filters);
 
         /**
-         * LÓGICA DE GRILLA (PANTALLA)
+         * LÓGICA DE GRILLA (PANTALLA) CON PAGINACIÓN
          */
         if (!$filters['user_id']) {
-            // SI SON TODOS: Agrupamos por conductor (Suma total del periodo)
-            $attendances = $rawRecords->groupBy('user_id')->map(function ($group) {
+            // TODOS: Agrupamos y calculamos totales (Aquí la paginación suele ser corta por número de empleados)
+            $rawRecords = $query->get();
+            $data = $rawRecords->groupBy('user_id')->map(function ($group) {
                 $first = $group->first();
                 $totals = $this->calculateTotals($group);
-
                 return (object) [
                     'user_id'       => $first->user_id,
                     'user_name'     => $first->user_name,
@@ -45,11 +47,20 @@ class AttendanceController extends Controller
                     'total_day'     => $this->formatHoursToTime($totals['total']),
                 ];
             })->values()->sortBy('user_name');
-        } else {
-            // SI ES UN USUARIO: Detalle fila por fila (Diario)
-            $attendances = $rawRecords->map(function ($item) {
-                $totals = $this->calculateTotals(collect([$item]));
 
+            // Convertimos a paginador manual para mantener consistencia
+            $currentPage = LengthAwarePaginator::resolveCurrentPage();
+            $perPage = 15;
+            $currentPageItems = $data->slice(($currentPage - 1) * $perPage, $perPage)->all();
+            $attendances = new LengthAwarePaginator($currentPageItems, count($data), $perPage);
+            $attendances->setPath($request->url())->appends($request->all());
+        } else {
+            // UN USUARIO: Detalle diario paginado (Los 2 meses de data)
+            $rawPaginator = $query->orderBy('check_in', 'desc')->paginate(15)->appends($request->all());
+
+            // Transformamos los items manteniendo el objeto paginador
+            $transformedItems = collect($rawPaginator->items())->map(function ($item) {
+                $totals = $this->calculateTotals(collect([$item]));
                 return (object) [
                     'user_id'       => $item->user_id,
                     'user_name'     => $item->user_name,
@@ -62,7 +73,15 @@ class AttendanceController extends Controller
                     'hours_extra'   => $this->formatHoursToTime($totals['extra']),
                     'total_day'     => $this->formatHoursToTime($totals['total']),
                 ];
-            })->sortByDesc('date');
+            });
+
+            $attendances = new LengthAwarePaginator(
+                $transformedItems,
+                $rawPaginator->total(),
+                $rawPaginator->perPage(),
+                $rawPaginator->currentPage(),
+                ['path' => $request->url(), 'query' => $request->query()]
+            );
         }
 
         return view('modules.logistics.admin.attendance-report', [
@@ -76,20 +95,17 @@ class AttendanceController extends Controller
     {
         $filters = $this->parseFilters($request);
         $records = $this->getRawAttendanceQuery($filters)->orderBy('check_in', 'asc')->get();
-
         $fileName = "asistencia_" . now()->format('Ymd_His') . ".csv";
 
         return response()->stream(function () use ($records) {
             $file = fopen('php://output', 'w');
-            fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF)); // BOM para Excel
-
+            fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
             fputcsv($file, ['CONDUCTOR', 'FECHA', 'ENTRADA', 'SALIDA', 'TIEMPO TOTAL', 'TIPO']);
 
             foreach ($records as $row) {
                 $checkIn = Carbon::parse($row->check_in);
                 $checkOut = $row->check_out ? Carbon::parse($row->check_out) : null;
                 $totalMin = $checkOut ? $checkIn->diffInMinutes($checkOut) : 0;
-
                 fputcsv($file, [
                     $row->user_name,
                     $checkIn->toDateString(),

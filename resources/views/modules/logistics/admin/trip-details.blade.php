@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="max-w-5xl mx-auto px-2 md:px-0">
-    {{-- ENCABEZADO: Ajustado para apilarse en móvil --}}
+    {{-- ENCABEZADO --}}
     <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
             <a href="{{ route('logistics.index') }}" class="text-[10px] font-black text-reversso uppercase tracking-widest hover:underline flex items-center gap-2">
@@ -15,16 +15,30 @@
             </a>
             <h2 class="text-2xl md:text-3xl font-black text-gray-900 italic uppercase tracking-tighter mt-2">Expediente de Viaje</h2>
         </div>
-        <div class="inline-flex self-start md:self-center bg-green-100 text-green-700 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest">
-            {{ $trip->end_time ? 'Completado' : 'En Curso' }}
+
+        {{-- BADGE DINÁMICO DE ESTADO --}}
+        <div class="inline-flex self-start md:self-center px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest
+            @if($trip->approved_by === 0)
+                bg-red-100 text-red-700
+            @elseif($trip->approved_at)
+                bg-green-100 text-green-700
+            @else
+                bg-orange-100 text-orange-700
+            @endif">
+
+            @if($trip->approved_by === 0)
+            Estado: Desaprobado
+            @elseif($trip->approved_at)
+            Estado: Auditado / Aprobado
+            @else
+            Estado: Pendiente de Auditoría
+            @endif
         </div>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-
         {{-- COLUMNA IZQUIERDA: Info Conductor y Tiempos --}}
         <div class="md:col-span-1 space-y-6">
-            {{-- Conductor --}}
             <div class="bg-white p-6 rounded-[30px] shadow-sm border border-gray-100">
                 <p class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Conductor Responsable</p>
                 <div class="flex items-center gap-4">
@@ -38,7 +52,6 @@
                 </div>
             </div>
 
-            {{-- Tiempos --}}
             <div class="bg-white p-6 rounded-[30px] shadow-sm border border-gray-100">
                 <p class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Registro de Tiempos</p>
                 <div class="space-y-4">
@@ -56,13 +69,10 @@
             </div>
         </div>
 
-        {{-- COLUMNA DERECHA: Odómetro y Notas --}}
+        {{-- COLUMNA DERECHA: Métricas y Notas --}}
         <div class="md:col-span-2 space-y-6">
-            {{-- Métricas --}}
             <div class="bg-white p-6 md:p-8 rounded-[35px] md:rounded-[40px] shadow-sm border border-gray-100">
                 <h3 class="font-black text-gray-900 text-lg uppercase italic tracking-tight mb-6">Métricas de Recorrido</h3>
-
-                {{-- Grid Odómetros: 1 col en móvil, 2 en desktop --}}
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-8">
                     <div class="p-5 md:p-6 bg-gray-50 rounded-[24px] border border-gray-100">
                         <span class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Odómetro Inicial</span>
@@ -71,7 +81,6 @@
                             <span class="text-[10px] font-bold text-gray-400 ml-1">KM</span>
                         </div>
                     </div>
-
                     <div class="p-5 md:p-6 bg-gray-50 rounded-[24px] border border-gray-100">
                         <span class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Odómetro Final</span>
                         <div class="flex items-baseline">
@@ -82,24 +91,53 @@
                 </div>
 
                 @if($trip->end_odometer)
-                <div class="mt-8 pt-8 border-t border-dashed border-gray-200 flex flex-col md:flex-row justify-between items-center gap-6">
+                <div class="mt-8 pt-8 border-t border-dashed border-gray-200">
                     <div class="text-center md:text-left">
                         <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Distancia Total</p>
                         <p class="text-xl md:text-2xl font-black text-reversso italic tracking-tighter">{{ $trip->end_odometer - $trip->start_odometer }} KM Recorridos</p>
                     </div>
-                    <button class="w-full md:w-auto bg-gray-900 text-white px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg active:scale-95">
-                        Validar Odómetro
-                    </button>
                 </div>
                 @endif
             </div>
 
-            {{-- Observaciones --}}
             <div class="bg-white p-6 md:p-8 rounded-[35px] md:rounded-[40px] shadow-sm border border-gray-100">
                 <h3 class="font-black text-gray-900 text-lg uppercase italic tracking-tight mb-4">Notas y Observaciones</h3>
                 <div class="p-6 bg-orange-50/50 rounded-[24px] text-sm text-gray-600 italic leading-relaxed">
                     {{ $trip->observations ?? 'El conductor no registró observaciones adicionales para este trayecto.' }}
                 </div>
+            </div>
+
+            {{-- BOTONES DE ACCIÓN ADMINISTRATIVA --}}
+            <div class="flex flex-col md:flex-row justify-end gap-4 pt-4">
+                @if($trip->approved_by === 0)
+                <form action="{{ route('logistics.approve', $trip->id) }}" method="POST">
+                    @csrf
+                    <button type="submit" class="w-full md:w-auto bg-gray-900 text-white px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 shadow-lg">
+                        Re-Aprobar Trayecto
+                    </button>
+                </form>
+                @elseif(!$trip->approved_at)
+                <form action="{{ route('logistics.disapprove', $trip->id) }}" method="POST">
+                    @csrf
+                    <button type="submit" class="w-full md:w-auto border border-red-200 text-red-600 px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all">
+                        Desaprobar
+                    </button>
+                </form>
+                <form action="{{ route('logistics.approve', $trip->id) }}" method="POST">
+                    @csrf
+                    <button type="submit" class="w-full md:w-auto bg-green-600 text-white px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 shadow-lg">
+                        Aprobar Registro
+                    </button>
+                </form>
+                @else
+                {{-- SI YA ESTÁ APROBADO, PERMITIR DESAPROBAR POR SI HUBO ERROR --}}
+                <form action="{{ route('logistics.disapprove', $trip->id) }}" method="POST">
+                    @csrf
+                    <button type="submit" class="w-full md:w-auto border border-gray-200 text-gray-400 px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:text-red-600 hover:border-red-200 transition-all">
+                        Anular Aprobación
+                    </button>
+                </form>
+                @endif
             </div>
         </div>
     </div>
