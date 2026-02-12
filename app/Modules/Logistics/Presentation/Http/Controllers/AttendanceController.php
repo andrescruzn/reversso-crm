@@ -6,10 +6,11 @@ namespace App\Modules\Logistics\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Users\Infrastructure\Models\User;
+use App\Modules\Logistics\Attendance\Infrastructure\Models\UserAttendance; // ✅ Importante
+use App\Modules\Logistics\TimeTracking\Domain\Contracts\TimeTrackingRepositoryInterface;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\RedirectResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -17,23 +18,38 @@ use Illuminate\Pagination\LengthAwarePaginator;
 
 class AttendanceController extends Controller
 {
+    protected TimeTrackingRepositoryInterface $timeTrackingRepo;
+
+    /**
+     * Inyectamos el repositorio de TimeTracking para validar viajes activos.
+     */
+    public function __construct(TimeTrackingRepositoryInterface $timeTrackingRepo)
+    {
+        $this->timeTrackingRepo = $timeTrackingRepo;
+    }
+
+    /**
+     * Muestra el reporte de asistencia (Admin).
+     */
     public function index(Request $request): View
     {
         $filters = $this->parseFilters($request);
         $drivers = User::whereHas('roles', fn($q) => $q->where('name', '!=', 'admin'))->get();
 
-        // 1. Obtenemos la query base
+        // Query base usando Eloquent para consistencia
         $query = $this->getRawAttendanceQuery($filters);
 
         /**
-         * LÓGICA DE GRILLA (PANTALLA) CON PAGINACIÓN
+         * LÓGICA DE GRILLA CON PAGINACIÓN
          */
         if (!$filters['user_id']) {
-            // TODOS: Agrupamos y calculamos totales (Aquí la paginación suele ser corta por número de empleados)
+            // VISTA RESUMEN (TODOS): Agrupamos y calculamos totales
             $rawRecords = $query->get();
+
             $data = $rawRecords->groupBy('user_id')->map(function ($group) {
                 $first = $group->first();
                 $totals = $this->calculateTotals($group);
+
                 return (object) [
                     'user_id'       => $first->user_id,
                     'user_name'     => $first->user_name,
@@ -48,14 +64,14 @@ class AttendanceController extends Controller
                 ];
             })->values()->sortBy('user_name');
 
-            // Convertimos a paginador manual para mantener consistencia
+            // Paginación manual del resumen
             $currentPage = LengthAwarePaginator::resolveCurrentPage();
             $perPage = 15;
             $currentPageItems = $data->slice(($currentPage - 1) * $perPage, $perPage)->all();
             $attendances = new LengthAwarePaginator($currentPageItems, count($data), $perPage);
             $attendances->setPath($request->url())->appends($request->all());
         } else {
-            // UN USUARIO: Detalle diario paginado (Los 2 meses de data)
+            // VISTA DETALLE (UN USUARIO): Detalle diario paginado
             $rawPaginator = $query->orderBy('check_in', 'desc')->paginate(15)->appends($request->all());
 
             // Transformamos los items manteniendo el objeto paginador
@@ -91,6 +107,9 @@ class AttendanceController extends Controller
         ]);
     }
 
+    /**
+     * Exportar reporte a CSV.
+     */
     public function export(Request $request): StreamedResponse
     {
         $filters = $this->parseFilters($request);
@@ -99,7 +118,7 @@ class AttendanceController extends Controller
 
         return response()->stream(function () use ($records) {
             $file = fopen('php://output', 'w');
-            fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF)); // BOM para Excel
             fputcsv($file, ['CONDUCTOR', 'FECHA', 'ENTRADA', 'SALIDA', 'TIEMPO TOTAL', 'TIPO']);
 
             foreach ($records as $row) {
@@ -120,6 +139,90 @@ class AttendanceController extends Controller
             "Content-type"        => "text/csv",
             "Content-Disposition" => "attachment; filename=$fileName",
         ]);
+    }
+
+    /**
+     * Acción: Iniciar Jornada (Check-in).
+     */
+    public function checkIn(Request $request): RedirectResponse
+    {
+        $userId = (int) Auth::id();
+
+        // Evitar duplicados
+        if ($this->getActiveAttendance($userId)) {
+            return redirect()->back()->with('error', 'Ya tienes una jornada activa.');
+        }
+
+        UserAttendance::create([
+            'user_id'    => $userId,
+            'check_in'   => now(),
+            'is_holiday' => $request->has('is_holiday'),
+            'status'     => 'active',
+        ]);
+
+        return redirect()->back()->with('success', 'Jornada iniciada.');
+    }
+
+    /**
+     * Acción: Finalizar Jornada (Check-out).
+     * CON VALIDACIÓN DE SEGURIDAD.
+     */
+    public function checkOut(): RedirectResponse
+    {
+        $userId = (int) Auth::id();
+        $attendance = $this->getActiveAttendance($userId);
+
+        if (!$attendance) {
+            return redirect()->back()->with('error', 'No hay jornada activa para cerrar.');
+        }
+
+        // =========================================================================
+        // 🔒 VALIDACIÓN DE NEGOCIO: NO CERRAR JORNADA SI HAY VIAJE ABIERTO
+        // =========================================================================
+        $activeTrip = $this->timeTrackingRepo->findActiveByUserId($userId);
+
+        if ($activeTrip) {
+            // Se usa el ID si no hay tracking number, para evitar errores
+            $tripId = $activeTrip->tracking_number ?? $activeTrip->id;
+            return redirect()->back()->with(
+                'error',
+                "⛔ ALERTA: No puedes cerrar jornada. Tienes el viaje #{$tripId} en curso. Finalízalo primero."
+            );
+        }
+
+        // Proceder al cierre
+        $attendance->update([
+            'check_out' => now(),
+            'status'    => 'completed'
+        ]);
+
+        return redirect()->route('dashboard')->with('success', 'Jornada finalizada correctamente.');
+    }
+
+    // --- Helpers Privados ---
+
+    private function getActiveAttendance(int $userId)
+    {
+        return UserAttendance::where('user_id', $userId)
+            ->whereNull('check_out')
+            ->first();
+    }
+
+    private function getRawAttendanceQuery(array $filters)
+    {
+        // Join manual para reporte eficiente
+        $query = UserAttendance::query()
+            ->join('users', 'users.id', '=', 'user_attendance.user_id')
+            ->select('user_attendance.*', 'users.name as user_name')
+            ->whereBetween('user_attendance.check_in', [
+                Carbon::parse($filters['from'])->startOfDay()->toDateTimeString(),
+                Carbon::parse($filters['to'])->endOfDay()->toDateTimeString()
+            ]);
+
+        if (!empty($filters['user_id'])) {
+            $query->where('user_attendance.user_id', $filters['user_id']);
+        }
+        return $query;
     }
 
     private function calculateTotals($group): array
@@ -148,23 +251,6 @@ class AttendanceController extends Controller
         return sprintf('%dh %02dm', floor($totalMinutes / 60), $totalMinutes % 60);
     }
 
-    private function getRawAttendanceQuery(array $filters)
-    {
-        $query = DB::table('user_attendance')
-            ->join('users', 'users.id', '=', 'user_attendance.user_id')
-            ->select('user_attendance.*', 'users.name as user_name')
-            ->whereNull('user_attendance.deleted_at')
-            ->whereBetween('user_attendance.check_in', [
-                Carbon::parse($filters['from'])->startOfDay()->toDateTimeString(),
-                Carbon::parse($filters['to'])->endOfDay()->toDateTimeString()
-            ]);
-
-        if (!empty($filters['user_id'])) {
-            $query->where('user_attendance.user_id', $filters['user_id']);
-        }
-        return $query;
-    }
-
     private function parseFilters(Request $request): array
     {
         return [
@@ -172,27 +258,5 @@ class AttendanceController extends Controller
             'from'    => $request->get('from') ?? now()->startOfMonth()->toDateString(),
             'to'      => $request->get('to') ?? now()->toDateString(),
         ];
-    }
-
-    public function checkIn(Request $request): RedirectResponse
-    {
-        $userId = Auth::id();
-        if ($this->getActiveAttendance((int)$userId)) return redirect()->back()->with('error', 'Ya tienes una jornada activa.');
-        DB::table('user_attendance')->insert(['user_id' => $userId, 'check_in' => now(), 'is_holiday' => $request->has('is_holiday') ? 1 : 0, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
-        return redirect()->back()->with('success', 'Jornada iniciada.');
-    }
-
-    public function checkOut(): RedirectResponse
-    {
-        $userId = Auth::id();
-        $attendance = $this->getActiveAttendance((int)$userId);
-        if (!$attendance) return redirect()->back()->with('error', 'No hay jornada activa.');
-        DB::table('user_attendance')->where('id', $attendance->id)->update(['check_out' => now(), 'status' => 'completed', 'updated_at' => now()]);
-        return redirect()->route('dashboard')->with('success', 'Jornada finalizada.');
-    }
-
-    private function getActiveAttendance(int $userId)
-    {
-        return DB::table('user_attendance')->where('user_id', $userId)->whereNull('check_out')->whereNull('deleted_at')->first();
     }
 }

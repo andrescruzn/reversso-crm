@@ -5,49 +5,52 @@ declare(strict_types=1);
 namespace App\Modules\Users\Infrastructure\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
 class User extends Authenticatable implements JWTSubject
 {
-    use HasFactory, Notifiable, SoftDeletes;
+    use HasFactory, Notifiable;
 
-    protected $table = 'users';
-
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
     protected $fillable = [
         'name',
         'email',
         'password',
-        'is_active',
     ];
 
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var array<int, string>
+     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed', // Laravel 11+ maneja el hash automáticamente
-            'is_active' => 'boolean',
+            'password' => 'hashed',
         ];
     }
 
-    public function getJWTIdentifier(): mixed
-    {
-        return $this->getKey();
-    }
-
-    public function getJWTCustomClaims(): array
-    {
-        return ['role' => $this->roles()->first()?->display_name ?? 'guest'];
-    }
-
+    /**
+     * Relación con Roles.
+     */
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(
@@ -58,24 +61,49 @@ class User extends Authenticatable implements JWTSubject
         )->withTimestamps();
     }
 
+    /**
+     * Verifica si el usuario tiene un rol específico (String).
+     */
     public function hasRole(string $role): bool
     {
-        return $this->roles()->where('display_name', $role)->exists();
+        return $this->roles()
+            ->where(function ($q) use ($role) {
+                $q->where('display_name', $role)
+                ->orWhere('name', $role);
+            })
+            ->exists();
     }
 
+    /**
+     * ✅ CORRECCIÓN: Método para verificar múltiples roles (Array).
+     * Este es el método que usaremos en la vista.
+     */
     public function hasAnyRole(array $roles): bool
     {
         return $this->roles()->whereIn('display_name', $roles)->exists();
     }
 
-    public function assignRole(int|Role $role): void
+    // JWT Methods
+    public function getJWTIdentifier()
     {
-        $roleId = $role instanceof Role ? $role->id : $role;
-        $this->roles()->syncWithoutDetaching([$roleId]);
+        return $this->getKey();
     }
 
+    public function getJWTCustomClaims()
+    {
+        return [
+            'role' => $this->roles->first()?->name,
+        ];
+    }
+
+    /**
+     * Verifica si el usuario está activo.
+     * Esto asume que tienes una columna 'is_active' en tu tabla 'users'.
+     */
     public function isActive(): bool
     {
-        return $this->is_active;
+        // Si no tienes la columna 'is_active', puedes retornar true por ahora
+        // para que te deje entrar, o usar otra lógica.
+        return (bool) ($this->is_active ?? true);
     }
 }

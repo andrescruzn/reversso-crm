@@ -36,10 +36,15 @@ class TimeTrackingController extends Controller
      */
     public function start(StartTrackingRequest $request): JsonResponse
     {
+        // -----------------------------------------------------------------
+        // Nota: vehicle_plate debe viajar hasta el servicio, si no, jamás
+        // se persistirá aunque exista la columna en la BD.
+        // -----------------------------------------------------------------
         $result = $this->service->startTracking(
-            userId: auth()->id(),
+            userId: (int) auth()->id(),
+            vehiclePlate: $request->input('vehicle_plate'), // ✅ NUEVO
             origin: $request->input('origin'),
-            startOdometer: $request->input('start_odometer'),
+            startOdometer: (int) $request->input('start_odometer'),
             isHoliday: $request->boolean('is_holiday'),
             observations: $request->input('observations')
         );
@@ -65,9 +70,9 @@ class TimeTrackingController extends Controller
     public function end(EndTrackingRequest $request): JsonResponse
     {
         $result = $this->service->endTracking(
-            userId: auth()->id(),
+            userId: (int) auth()->id(),
             destination: $request->input('destination'),
-            endOdometer: $request->input('end_odometer'),
+            endOdometer: (int) $request->input('end_odometer'),
             observations: $request->input('observations')
         );
 
@@ -84,14 +89,9 @@ class TimeTrackingController extends Controller
         );
     }
 
-    /**
-     * Obtener registro activo del conductor autenticado.
-     *
-     * GET /api/v1/time-tracking/active
-     */
     public function active(): JsonResponse
     {
-        $result = $this->service->getActiveTracking(auth()->id());
+        $result = $this->service->getActiveTracking((int) auth()->id());
 
         if ($result->isFailure()) {
             return ApiResponse::error(
@@ -107,11 +107,6 @@ class TimeTrackingController extends Controller
         );
     }
 
-    /**
-     * Obtener historial del conductor autenticado.
-     *
-     * GET /api/v1/time-tracking/my-history
-     */
     public function myHistory(Request $request): JsonResponse
     {
         $filters = [
@@ -121,7 +116,7 @@ class TimeTrackingController extends Controller
         ];
 
         $result = $this->service->getUserHistory(
-            userId: auth()->id(),
+            userId: (int) auth()->id(),
             filters: array_filter($filters),
             page: (int) $request->input('page', 1),
             limit: (int) $request->input('limit', 20)
@@ -147,11 +142,6 @@ class TimeTrackingController extends Controller
     // OPERACIONES DE ADMINISTRADORES
     // =====================================================================
 
-    /**
-     * Listar todos los registros (con filtros).
-     *
-     * GET /api/v1/time-tracking
-     */
     public function index(Request $request): JsonResponse
     {
         $filters = [
@@ -184,11 +174,6 @@ class TimeTrackingController extends Controller
         );
     }
 
-    /**
-     * Obtener registro específico por ID.
-     *
-     * GET /api/v1/time-tracking/{id}
-     */
     public function show(int $id): JsonResponse
     {
         $result = $this->service->getById($id);
@@ -207,16 +192,11 @@ class TimeTrackingController extends Controller
         );
     }
 
-    /**
-     * Aprobar registro de tiempo.
-     *
-     * POST /api/v1/time-tracking/{id}/approve
-     */
     public function approve(int $id): JsonResponse
     {
         $result = $this->service->approve(
             trackingId: $id,
-            approvedBy: auth()->id()
+            approvedBy: (int) auth()->id()
         );
 
         if ($result->isFailure()) {
@@ -232,11 +212,6 @@ class TimeTrackingController extends Controller
         );
     }
 
-    /**
-     * Revertir aprobación.
-     *
-     * POST /api/v1/time-tracking/{id}/unapprove
-     */
     public function unapprove(int $id): JsonResponse
     {
         $result = $this->service->unapprove($id);
@@ -254,14 +229,8 @@ class TimeTrackingController extends Controller
         );
     }
 
-    /**
-     * Actualizar registro (edición administrativa).
-     *
-     * PUT /api/v1/time-tracking/{id}
-     */
     public function update(Request $request, int $id): JsonResponse
     {
-        // Validar datos permitidos para actualización
         $validated = $request->validate([
             'start_time' => ['nullable', 'date'],
             'end_time' => ['nullable', 'date', 'after:start_time'],
@@ -271,6 +240,9 @@ class TimeTrackingController extends Controller
             'end_odometer' => ['nullable', 'numeric', 'min:0'],
             'is_holiday' => ['nullable', 'boolean'],
             'observations' => ['nullable', 'string', 'max:1000'],
+
+            // ✅ si quieres permitir editar placa desde admin:
+            'vehicle_plate' => ['nullable', 'string', 'max:10'],
         ]);
 
         $result = $this->service->update($id, $validated);
@@ -288,11 +260,6 @@ class TimeTrackingController extends Controller
         );
     }
 
-    /**
-     * Eliminar registro.
-     *
-     * DELETE /api/v1/time-tracking/{id}
-     */
     public function destroy(int $id): JsonResponse
     {
         $result = $this->service->delete($id);

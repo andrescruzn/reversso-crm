@@ -6,63 +6,88 @@ namespace App\Modules\Logistics\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Logistics\Overtime\Application\Services\OvertimeCalculatorService;
-use App\Modules\Logistics\TimeTracking\Infrastructure\Persistence\EloquentTimeTrackingRepository;
-use Illuminate\Http\Request; // Importación crucial para solucionar el ArgumentCountError
+use App\Modules\Logistics\TimeTracking\Domain\Contracts\TimeTrackingRepositoryInterface;
+use App\Modules\Logistics\TimeTracking\Infrastructure\Models\TimeTracking;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
     public function __construct(
         private readonly OvertimeCalculatorService $overtimeService,
-        private readonly EloquentTimeTrackingRepository $trackingRepository
+        private readonly TimeTrackingRepositoryInterface $trackingRepository
     ) {}
 
-    /**
-     * Home principal del CRM
-     */
     public function index(): View
     {
-        return view('crm.home', [
-            'user' => Auth::user(),
-            'activeAttendance' => $this->getActiveAttendance()
+        $user = Auth::user();
+
+        // ✅ Admin: NO ve asistencia, NO marca entrada/salida
+        if ($user->hasRole('Administrador')) {
+            return view('crm.home-admin', [
+                'user' => $user,
+            ]);
+        }
+
+        // ✅ Conductor: ve asistencia (la usa el layout para el card)
+        if ($user->hasRole('Conductor')) {
+            return view('crm.home', [
+                'user'             => $user,
+                'activeAttendance' => $this->getActiveAttendance(),
+            ]);
+        }
+
+        // ✅ Otros roles (futuros): home genérico sin asistencia
+        return view('crm.home-generic', [
+            'user' => $user,
         ]);
     }
 
     /**
-     * Módulo de Logística con soporte de filtros por fecha
+     * Vista de logística SOLO para CONDUCTOR.
+     * REGLA: siempre filtra por usuario autenticado.
      */
     public function logisticsModule(Request $request): View
     {
         $user = Auth::user();
-        $selectedDate = $request->get('date', Carbon::today('America/Bogota')->toDateString());
 
-        // Cambiamos ->get() por ->paginate(10)
-        // Esto habilita la división por páginas de 10 registros cada una
-        $todayTrips = DB::table('time_tracking')
-            ->where('user_id', $user->id)
-            ->whereDate('start_time', $selectedDate)
-            ->orderBy('start_time', 'desc')
-            ->paginate(10)
-            ->withQueryString(); // Importante para que no se pierda el filtro de fecha al cambiar de página
+        // ✅ Seguridad: logística operativa es SOLO Conductor
+        abort_unless($user->hasRole('Conductor'), 403);
 
-        $metrics = [
-            'total_km' => (float) $this->calculateTotalKmToday((int)$user->id)
-        ];
+        $from = $request->get('from')
+            ? Carbon::parse((string) $request->get('from'))->startOfDay()
+            : Carbon::now()->startOfMonth();
+
+        $to = $request->get('to')
+            ? Carbon::parse((string) $request->get('to'))->endOfDay()
+            : Carbon::now()->endOfDay();
+
+        // ✅ Query base: SOLO registros del usuario
+        $baseQuery = TimeTracking::query()
+            ->where('user_id', (int) $user->id)
+            ->whereBetween('start_time', [$from, $to])
+            ->orderBy('start_time', 'desc');
+
+        // ✅ Métricas sobre TODO el rango (no sobre el paginado)
+        $metrics = $this->getMetrics((clone $baseQuery)->get());
+
+        // ✅ Paginación
+        $trips = $baseQuery->paginate(10)->withQueryString();
 
         return view('modules.logistics.dashboard', [
-            'user' => $user,
-            'todayTrips' => $todayTrips,
-            'selectedDate' => $selectedDate,
-            'activeTracking' => $this->trackingRepository->findActiveByUser((int)$user->id),
-            'activeAttendance' => $this->getActiveAttendance(),
-            'metrics' => $metrics
+            'user'             => $user,
+            'trips'            => $trips,
+            'filters'          => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
+            'activeTracking'   => $this->trackingRepository->findActiveByUserId((int) $user->id),
+            'activeAttendance' => $this->getActiveAttendance(), // <- para bloquear "Iniciar viaje" si no hay jornada
+            'metrics'          => $metrics,
         ]);
     }
 
-    private function getActiveAttendance()
+    private function getActiveAttendance(): ?object
     {
         return DB::table('user_attendance')
             ->where('user_id', Auth::id())
@@ -70,13 +95,29 @@ class DashboardController extends Controller
             ->first();
     }
 
-    private function calculateTotalKmToday(int $userId): float
+    /**
+     * @param \Illuminate\Support\Collection<int, mixed> $records
+     */
+    private function getMetrics($records): array
     {
-        return (float) DB::table('time_tracking')
-            ->where('user_id', $userId)
-            ->whereDate('start_time', Carbon::today('America/Bogota')->toDateString())
-            ->whereNotNull('end_odometer')
-            ->selectRaw('SUM(end_odometer - start_odometer) as total_km')
-            ->value('total_km') ?? 0.0;
+        return [
+            'total_trips' => $records->count(),
+
+            // ✅ suma de km recorridos SOLO en viajes cerrados (con odómetro final)
+            'total_km' => (float) $records->sum(function ($t) {
+                if ($t->end_odometer === null || $t->start_odometer === null) {
+                    return 0;
+                }
+                return max(0, (int) $t->end_odometer - (int) $t->start_odometer);
+            }),
+
+            // ✅ horas SOLO cerradas (con end_time)
+            'total_hours' => (float) $records->sum(function ($t) {
+                if (!$t->end_time) {
+                    return 0;
+                }
+                return Carbon::parse($t->start_time)->diffInHours(Carbon::parse($t->end_time));
+            }),
+        ];
     }
 }

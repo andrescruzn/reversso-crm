@@ -4,18 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Logistics\TimeTracking\Application\Actions;
 
-use App\Common\Enums\ErrorCode;
 use App\Common\Services\ServiceResult;
 use App\Modules\Logistics\TimeTracking\Domain\Contracts\TimeTrackingRepositoryInterface;
-use Carbon\Carbon;
 
 /**
- * Acción para iniciar un registro de tiempo.
- *
- * PATRÓN: Action Class (Single Responsibility)
+ * Caso de uso: iniciar tracking.
  *
  * RESPONSABILIDAD:
- * Iniciar una jornada de trabajo para un conductor.
+ * - Validar reglas de negocio del inicio
+ * - Persistir el tracking inicial (incluyendo placa)
  */
 class StartTrackingAction
 {
@@ -23,47 +20,33 @@ class StartTrackingAction
         private readonly TimeTrackingRepositoryInterface $repository
     ) {}
 
-    /**
-     * Ejecutar la acción.
-     */
     public function execute(
         int $userId,
+        string $vehiclePlate,     // ✅ NUEVO
         string $origin,
         ?float $startOdometer = null,
         bool $isHoliday = false,
         ?string $observations = null
     ): ServiceResult {
-        // =====================================================================
-        // 1. VALIDAR QUE NO EXISTA REGISTRO ACTIVO
-        // =====================================================================
+        // ------------------------------------------------------------
+        // Reglas/validaciones de negocio propias del caso de uso
+        // (ej: no permitir 2 activos, etc.) -> si ya las tienes, déjalas
+        // ------------------------------------------------------------
 
-        if ($this->repository->hasActiveTracking($userId)) {
-            return ServiceResult::fail(
-                message: 'Ya tienes un registro de tiempo activo. Finalízalo antes de iniciar uno nuevo.',
-                errorCode: ErrorCode::TRACKING_ALREADY_STARTED->value
-            );
-        }
-
-        // =====================================================================
-        // 2. CREAR REGISTRO DE TIEMPO
-        // =====================================================================
-
+        // Persistencia: asegúrate de enviar vehicle_plate al repo
         $tracking = $this->repository->create([
-            'user_id' => $userId,
-            'start_time' => now(),
-            'origin' => $origin,
-            'start_odometer' => $startOdometer,
-            'is_holiday' => $isHoliday,
-            'observations' => $observations,
+            'user_id'        => $userId,
+            'start_time'     => now(),
+            'origin'         => $origin,
+            'vehicle_plate'  => $vehiclePlate,          // ✅ CLAVE
+            'start_odometer' => (int) ($startOdometer ?? 0),
+            'is_holiday'     => $isHoliday,
+            'observations'   => $observations,
         ]);
-
-        // =====================================================================
-        // 3. RETORNAR RESULTADO EXITOSO
-        // =====================================================================
 
         return ServiceResult::ok(
             data: $tracking,
-            message: 'Jornada iniciada exitosamente'
+            message: 'Viaje iniciado.'
         );
     }
 }

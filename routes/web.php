@@ -7,64 +7,104 @@ use App\Modules\Logistics\Presentation\Http\Controllers\{
     DashboardController,
     TimeTrackingController,
     AttendanceController,
-    LogisticsAdminController // <--- Asegúrate que este esté importado
+    LogisticsAdminController
 };
 
 Route::get('/', fn() => redirect()->route('login'));
+
+// Autenticación
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
 
 Route::middleware(['auth'])->group(function () {
 
-    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    /**
+     * ==========================================================
+     * DASHBOARD (según rol)
+     * - Conductor: ve home con asistencia (crm.home)
+     * - Administrador: ve home admin (crm.admin_home) SIN asistencia
+     * ==========================================================
+     */
+    Route::get('/dashboard', function () {
 
-    // CORRECCIÓN 1: Logout ahora acepta GET y POST para que no te de error 405
+        $user = auth()->user();
+
+        // ✅ Conductor: home operativo con asistencia
+        if ($user->hasRole('Conductor')) {
+            return app(DashboardController::class)->index();
+        }
+
+        // ✅ Admin: home administrativo sin check-in/out
+        if ($user->hasRole('Administrador')) {
+            return view('crm.admin_home', [
+                'user' => $user,
+            ]);
+        }
+
+        // ✅ Cualquier otro rol: restringido
+        abort(403);
+
+    })->name('dashboard');
+
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
 
+    // ==========================================================
     // MÓDULO: ASISTENCIA
+    // ==========================================================
     Route::prefix('attendance')->name('attendance.')->group(function () {
-        Route::post('/check-in', [AttendanceController::class, 'checkIn'])->name('checkin');
-        Route::post('/check-out', [AttendanceController::class, 'checkOut'])->name('checkout');
 
+        // ✅ Solo Conductor marca asistencia
+        Route::middleware(['role:Conductor'])->group(function () {
+            Route::post('/check-in', [AttendanceController::class, 'checkIn'])->name('checkin');
+            Route::post('/check-out', [AttendanceController::class, 'checkOut'])->name('checkout');
+        });
+
+        // Reportes solo para Administrador
         Route::middleware(['role:Administrador'])->group(function () {
             Route::get('/report', [AttendanceController::class, 'index'])->name('report');
             Route::get('/export', [AttendanceController::class, 'export'])->name('export');
         });
     });
 
+    // ==========================================================
     // MÓDULO: LOGÍSTICA
+    // - Conductor: opera (start/end/history)
+    // - Administrador: solo observa
+    // ==========================================================
     Route::prefix('logistics')->name('logistics.')->group(function () {
+
+        // Vista principal: cambia según rol
         Route::get('/', function (Request $request) {
             return auth()->user()->hasRole('Administrador')
                 ? app(LogisticsAdminController::class)->index($request)
                 : app(DashboardController::class)->logisticsModule($request);
         })->name('index');
 
-        // Acciones del Conductor
-        Route::post('/start', [TimeTrackingController::class, 'start'])->name('start');
-        Route::post('/end', [TimeTrackingController::class, 'end'])->name('end');
-        Route::get('/history', [TimeTrackingController::class, 'history'])->name('history');
+        // ------------------------------------------
+        // Acciones del CONDUCTOR (operativas)
+        // ------------------------------------------
+        Route::middleware(['role:Conductor'])->group(function () {
+            Route::post('/start', [TimeTrackingController::class, 'start'])->name('start');
+            Route::post('/end', [TimeTrackingController::class, 'end'])->name('end');
+            Route::get('/history', [TimeTrackingController::class, 'history'])->name('history');
+        });
 
-        // Acciones del Administrador
+        // ------------------------------------------
+        // Acciones del ADMINISTRADOR (solo observar)
+        // ------------------------------------------
         Route::middleware(['role:Administrador'])->group(function () {
-
-            // CORRECCIÓN 2: Apuntar al controlador correcto (LogisticsAdminController)
             Route::get('/export/tracking', [LogisticsAdminController::class, 'exportTracking'])->name('export.tracking');
-
-            // AQUÍ ESTABA EL ERROR: Antes decía TimeTrackingController
             Route::post('/approve/{id}', [LogisticsAdminController::class, 'approve'])->name('approve');
-
             Route::post('/disapprove/{id}', [LogisticsAdminController::class, 'disapprove'])->name('disapprove');
-
             Route::get('/trip/{id}', [LogisticsAdminController::class, 'showTrip'])->name('trip.show');
         });
     });
 
-    // MÓDULO: USUARIOS
-    Route::middleware(['role:Administrador'])->group(function () {
-        Route::prefix('users')->name('users.')->group(function () {
-            Route::get('/create', [UserController::class, 'create'])->name('create');
-            Route::post('/', [UserController::class, 'store'])->name('store');
-        });
+    // ==========================================================
+    // MÓDULO: USUARIOS (Admin)
+    // ==========================================================
+    Route::middleware(['role:Administrador'])->prefix('users')->name('users.')->group(function () {
+        Route::get('/create', [UserController::class, 'create'])->name('create');
+        Route::post('/', [UserController::class, 'store'])->name('store');
     });
 });

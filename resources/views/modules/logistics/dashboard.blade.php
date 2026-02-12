@@ -1,202 +1,459 @@
 @extends('layouts.crm')
 
-@section('module_title', 'Operaciones Logísticas')
+@section('module_title', 'MI BITÁCORA DE VIAJES')
 
 @section('content')
-<div class="max-w-6xl mx-auto px-2 md:px-0">
 
-    {{-- AVISO DE JORNADA CERRADA: Más compacto en móvil --}}
-    @if(empty($activeAttendance))
-    <div class="mb-8 p-6 md:p-8 bg-orange-50 border-2 border-dashed border-orange-200 rounded-[30px] flex flex-col items-center text-center animate-pulse">
-        <div class="w-10 h-10 bg-orange-200 rounded-full flex items-center justify-center text-orange-600 mb-4 font-black">!</div>
-        <h3 class="text-orange-900 font-black uppercase italic tracking-tighter text-base md:text-lg">Jornada Laboral No Iniciada</h3>
-        <p class="text-orange-700 text-[10px] font-bold uppercase tracking-widest mt-1">Debes marcar tu entrada para registrar viajes.</p>
-        <a href="{{ route('dashboard') }}" class="mt-4 px-6 py-3 bg-orange-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-orange-700 transition-colors">Volver al Inicio</a>
-    </div>
-    @endif
+{{-- 1. HEADER --}}
+<div class="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-6 mb-8">
+    <div>
+        @if(!$activeTracking)
 
-    {{-- CONTENEDOR DE OPERACIONES --}}
-    <div class="{{ (empty($activeAttendance)) ? 'opacity-30 pointer-events-none grayscale' : '' }} transition-all duration-500">
-
-        {{-- HEADER DEL PANEL RESPONSIVE --}}
-        <div class="mb-6 md:mb-8 bg-reversso rounded-[35px] md:rounded-[40px] p-6 md:p-10 shadow-2xl text-white relative overflow-hidden">
-            <div class="relative z-10">
-                <div class="flex items-center gap-3 mb-2">
-                    <span class="px-3 py-1 bg-white/20 rounded-full text-[8px] md:text-[9px] font-black uppercase tracking-widest">Módulo 01</span>
-                    <h2 class="text-2xl md:text-3xl font-black tracking-tight italic uppercase">Panel de Viajes</h2>
+            {{-- ✅ Si NO hay jornada activa, NO permitir iniciar viaje --}}
+            @if(!$activeAttendance)
+                <div class="bg-white border border-orange-100 p-4 rounded-2xl shadow-sm w-max">
+                    <p class="text-[9px] font-black text-orange-500 uppercase tracking-widest">Jornada finalizada</p>
+                    <p class="text-xs font-black text-gray-900 italic">Debes marcar entrada para iniciar un viaje.</p>
                 </div>
-                <p class="text-orange-100 text-xs md:text-sm mb-6 md:mb-8 font-medium italic">Gestión de rutas y kilometraje.</p>
+            @else
+                <button
+                    type="button"
+                    onclick="toggleGlobalModal('modal-start-trip')"
+                    class="w-full lg:w-auto bg-reversso text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-orange-500/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-3"
+                >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Iniciar Nuevo Viaje
+                </button>
+            @endif
 
-                <div class="flex flex-col sm:flex-row gap-4">
-                    @if(empty($activeTracking))
-                    <button onclick="toggleModal('modal-start')" class="w-full bg-white text-reversso font-black py-4 md:py-5 rounded-2xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest text-[11px] md:text-xs italic">
-                        🚢 Iniciar Nuevo Viaje
-                    </button>
-                    @else
-                    <button onclick="toggleModal('modal-end')" class="w-full bg-gray-900 border-2 border-gray-800 text-white font-black py-4 md:py-5 rounded-2xl shadow-lg hover:bg-black active:scale-95 transition-all uppercase tracking-widest text-[11px] md:text-xs italic">
-                        🏁 Finalizar Viaje Actual
-                    </button>
-                    @endif
+        @else
+            <div class="bg-white border-2 border-green-100 p-4 rounded-2xl flex items-center gap-4 shadow-sm w-max">
+                <div class="relative flex">
+                    <span class="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping"></span>
+                    <div class="relative bg-green-500 text-white p-2 rounded-xl">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                    </div>
                 </div>
-            </div>
-            <div class="absolute -right-10 -bottom-10 w-48 h-48 md:w-64 md:h-64 bg-white/10 rounded-full blur-3xl"></div>
-        </div>
-
-        {{-- MÉTRICAS RÁPIDAS --}}
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div class="bg-white rounded-[30px] p-6 md:p-8 shadow-sm border border-gray-100">
-                <p class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">KM Recorridos en Fecha</p>
-                <div class="flex items-baseline justify-between">
-                    <span class="text-3xl md:text-4xl font-black text-reversso">{{ number_format($metrics['total_km'] ?? 0, 1) }}</span>
-                    <span class="text-[10px] font-bold text-gray-400 italic">KM TOTALES</span>
-                </div>
-            </div>
-        </div>
-
-        {{-- HISTORIAL DE VIAJES: Tabla en Desktop / Cards en Mobile --}}
-        <div class="bg-white shadow-sm rounded-[35px] md:rounded-[40px] border border-gray-100 overflow-hidden mb-12">
-            <div class="px-6 md:px-10 py-6 md:py-7 border-b border-gray-50 bg-gray-50/30 flex flex-col md:flex-row justify-between items-center gap-4">
-                <div class="text-center md:text-left">
-                    <h3 class="font-black text-gray-900 text-base md:text-lg tracking-tighter uppercase italic">Historial de Viajes</h3>
-                    <p class="text-[9px] md:text-[10px] font-black text-reversso uppercase italic tracking-widest">
-                        {{ \Carbon\Carbon::parse($selectedDate ?? now())->translatedFormat('d \d\e F, Y') }}
+                <div>
+                    <p class="text-[9px] font-black text-green-500 uppercase tracking-widest">En ruta activa</p>
+                    <p class="text-xs font-black text-gray-900 italic">
+                        <span class="bg-gray-900 text-white px-2 py-0.5 rounded mr-1">{{ $activeTracking->vehicle_plate ?? 'S/P' }}</span>
+                        • {{ $activeTracking->origin }}
                     </p>
                 </div>
-
-                {{-- FILTRO DE FECHA --}}
-                <form action="{{ route('logistics.index') }}" method="GET" class="flex items-center gap-2 w-full md:w-auto justify-center">
-                    <input type="date" name="date" value="{{ $selectedDate ?? now()->toDateString() }}"
-                        class="bg-gray-100 border-none rounded-xl px-4 py-2 text-[10px] font-black uppercase focus:ring-2 focus:ring-reversso w-full md:w-auto">
-                    <button type="submit" class="bg-gray-900 text-white p-2.5 rounded-xl hover:bg-black transition-all shadow-lg">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                    </button>
-                </form>
             </div>
+        @endif
+    </div>
 
-            {{-- VISTA DESKTOP: Tabla --}}
-            <div class="hidden md:block overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-100">
-                    <thead>
-                        <tr class="bg-gray-50/50">
-                            <th class="px-10 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Trayecto Operativo</th>
-                            <th class="px-10 py-4 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">Hora Inicio</th>
-                            <th class="px-10 py-4 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">Distancia</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-50">
-                        @forelse($todayTrips as $trip)
-                        <tr class="hover:bg-gray-50/50 transition-colors">
-                            <td class="px-10 py-5">
-                                <div class="text-sm font-black text-gray-900 uppercase tracking-tighter">{{ $trip->origin }}</div>
-                                <div class="text-[10px] text-reversso font-bold italic">→ {{ $trip->destination ?? 'En tránsito...' }}</div>
-                            </td>
-                            <td class="px-10 py-5 text-center text-xs font-black text-gray-600">
-                                {{ \Carbon\Carbon::parse($trip->start_time)->format('h:i A') }}
-                            </td>
-                            <td class="px-10 py-5 text-center">
-                                @if($trip->end_odometer)
-                                <span class="text-sm font-black text-gray-900">{{ number_format($trip->end_odometer - $trip->start_odometer, 1) }}</span>
-                                <span class="text-[9px] font-bold text-gray-400 uppercase">Km</span>
-                                @else
-                                <span class="text-[10px] font-black text-orange-500 animate-pulse uppercase italic">En curso</span>
-                                @endif
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="3" class="px-10 py-20 text-center text-xs font-bold text-gray-400 uppercase italic">Sin registros</td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
+    {{-- FILTROS --}}
+    <form action="{{ route('logistics.index') }}" method="GET" class="flex flex-col md:flex-row items-center gap-2 bg-white p-2 rounded-[25px] shadow-sm border border-gray-100">
+        <div class="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-xl border border-gray-100">
+            <span class="text-[9px] font-black text-gray-400 uppercase tracking-tighter">Del</span>
+            <input type="date" name="from" value="{{ $filters['from'] }}" class="bg-transparent border-none p-0 text-xs font-bold focus:ring-0">
+        </div>
 
-            {{-- VISTA MOBILE: Cards --}}
-            <div class="md:hidden divide-y divide-gray-100">
-                @forelse($todayTrips as $trip)
-                <div class="p-6">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-[10px] font-black text-gray-600 uppercase">{{ \Carbon\Carbon::parse($trip->start_time)->format('h:i A') }}</span>
-                        @if(!$trip->end_odometer)
-                        <span class="text-[8px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full uppercase animate-pulse italic">En tránsito</span>
-                        @endif
-                    </div>
-                    <div class="mb-3">
-                        <div class="text-xs font-black text-gray-900 uppercase tracking-tight">{{ $trip->origin }}</div>
-                        <div class="text-[10px] text-reversso font-bold italic">→ {{ $trip->destination ?? '...' }}</div>
-                    </div>
-                    @if($trip->end_odometer)
-                    <div class="text-right">
-                        <span class="text-sm font-black text-gray-900">{{ number_format($trip->end_odometer - $trip->start_odometer, 1) }}</span>
-                        <span class="text-[9px] font-bold text-gray-400 uppercase">Km Totales</span>
-                    </div>
-                    @endif
-                </div>
-                @empty
-                <div class="p-10 text-center text-[10px] font-black text-gray-300 uppercase italic">Sin registros</div>
-                @endforelse
-            </div>
+        <div class="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-xl border border-gray-100">
+            <span class="text-[9px] font-black text-gray-400 uppercase tracking-tighter">Al</span>
+            <input type="date" name="to" value="{{ $filters['to'] }}" class="bg-transparent border-none p-0 text-xs font-bold focus:ring-0">
+        </div>
 
-            @if($todayTrips->hasPages())
-            <div class="px-6 md:px-10 py-6 border-t border-gray-50 bg-gray-50/20">
-                {{ $todayTrips->links() }}
-            </div>
-            @endif
+        {{-- ✅ LUPA Y RESET (perfecto centrado y mismo tamaño) --}}
+        <div class="flex gap-2">
+            <button
+                type="submit"
+                class="w-11 h-11 bg-gray-900 text-white rounded-2xl hover:bg-black transition-all inline-flex items-center justify-center leading-none"
+                aria-label="Buscar"
+                title="Buscar"
+            >
+                <svg class="w-5 h-5 block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </button>
+
+            <a
+                href="{{ route('logistics.index') }}"
+                class="w-11 h-11 bg-gray-100 text-gray-400 rounded-2xl hover:text-red-500 transition-all border border-gray-100 inline-flex items-center justify-center leading-none"
+                aria-label="Reset"
+                title="Reset"
+            >
+                <svg class="w-5 h-5 block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+            </a>
+        </div>
+    </form>
+</div>
+
+{{-- ✅ RESUMEN / MÉTRICAS --}}
+@if(isset($metrics))
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div class="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Viajes</p>
+            <p class="text-2xl font-black text-gray-900 mt-1">{{ $metrics['total_trips'] ?? 0 }}</p>
+            <p class="text-[10px] text-gray-400 font-bold mt-1">En el rango seleccionado</p>
+        </div>
+
+        <div class="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Kilómetros</p>
+            <p class="text-2xl font-black text-gray-900 mt-1">{{ number_format((float)($metrics['total_km'] ?? 0)) }}</p>
+            <p class="text-[10px] text-gray-400 font-bold mt-1">Recorridos totales</p>
+        </div>
+
+        <div class="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Horas</p>
+            <p class="text-2xl font-black text-gray-900 mt-1">{{ number_format((float)($metrics['total_hours'] ?? 0), 0) }}</p>
+            <p class="text-[10px] text-gray-400 font-bold mt-1">Acumuladas (cerrados)</p>
         </div>
     </div>
-</div>
-
-{{-- MODALS RESPONSIVE --}}
-<div id="modal-start" class="hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="toggleModal('modal-start')"></div>
-    <div class="relative bg-white w-full max-w-md rounded-t-[30px] sm:rounded-[30px] p-8 md:p-10 shadow-2xl">
-        <form action="{{ route('logistics.start') }}" method="POST">
-            @csrf
-            <h3 class="text-xl md:text-2xl font-black text-gray-900 mb-6 uppercase italic tracking-tighter text-center">Iniciar Viaje</h3>
-            <div class="space-y-4">
-                <div class="space-y-1">
-                    <label class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest italic">Origen</label>
-                    <input type="text" name="origin" required placeholder="Ej: Bodega Central" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold text-sm focus:ring-2 focus:ring-reversso outline-none">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest italic">Kilometraje Inicial</label>
-                    <input type="number" name="start_odometer" required placeholder="00000" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold text-sm focus:ring-2 focus:ring-reversso outline-none" inputmode="numeric">
-                </div>
-            </div>
-            <button type="submit" class="w-full mt-8 bg-gray-900 text-white font-black py-4 rounded-xl uppercase text-xs tracking-widest shadow-xl active:scale-95 transition-all">Confirmar Salida</button>
-        </form>
-    </div>
-</div>
-
-@if($activeTracking)
-<div id="modal-end" class="hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="toggleModal('modal-end')"></div>
-    <div class="relative bg-white w-full max-w-md rounded-t-[30px] sm:rounded-[30px] p-8 md:p-10 shadow-2xl">
-        <form action="{{ route('logistics.end') }}" method="POST">
-            @csrf
-            <input type="hidden" name="id" value="{{ $activeTracking->id }}">
-            <h3 class="text-xl md:text-2xl font-black text-gray-900 mb-6 uppercase italic tracking-tighter text-center">Finalizar Viaje</h3>
-            <div class="space-y-4">
-                <div class="space-y-1">
-                    <label class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest italic">Destino</label>
-                    <input type="text" name="destination" required placeholder="Ej: Entrega Cliente A" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold text-sm focus:ring-2 focus:ring-reversso outline-none">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest italic">Kilometraje Final</label>
-                    <input type="number" name="end_odometer" required placeholder="00000" class="w-full px-5 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl font-bold text-sm focus:ring-2 focus:ring-reversso outline-none" inputmode="numeric">
-                </div>
-            </div>
-            <button type="submit" class="w-full mt-8 bg-reversso text-white font-black py-4 rounded-xl uppercase text-xs tracking-widest shadow-xl active:scale-95 transition-all">Cerrar Registro</button>
-        </form>
-    </div>
-</div>
 @endif
 
+{{-- 2. GRILLA --}}
+<div class="bg-white rounded-[35px] shadow-2xl border border-gray-100 overflow-hidden text-xs">
+    <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+            <thead>
+                <tr class="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                    <th class="p-6">Vehículo / Ref</th>
+                    <th class="p-6">Ruta (Origen → Destino)</th>
+                    <th class="p-6 text-center">Kilometraje</th>
+                    <th class="p-6 text-center">Seguimiento</th>
+                    <th class="p-6 text-right">Acción</th>
+                </tr>
+            </thead>
+
+            <tbody class="divide-y divide-gray-50">
+                @forelse($trips as $trip)
+                    @php
+                        $deltaKm = null;
+                        if ($trip->end_odometer !== null && $trip->start_odometer !== null) {
+                            $deltaKm = max(0, (int)$trip->end_odometer - (int)$trip->start_odometer);
+                        }
+                    @endphp
+
+                    <tr class="hover:bg-gray-50/30 transition-all group">
+                        <td class="p-6">
+                            <div class="flex flex-col gap-1">
+                                <span class="bg-gray-900 text-white text-[9px] px-2 py-0.5 rounded-md font-black w-max shadow-sm">{{ $trip->vehicle_plate ?? 'S/P' }}</span>
+                                <span class="text-[9px] font-bold text-gray-300 uppercase">ID: #{{ $trip->id }}</span>
+                            </div>
+                        </td>
+
+                        <td class="p-6">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="font-black uppercase text-gray-900 tracking-tighter">{{ $trip->origin }}</span>
+                                @if($trip->destination)
+                                    <span class="text-reversso font-bold">→</span>
+                                    <span class="font-black uppercase text-gray-900 tracking-tighter">{{ $trip->destination }}</span>
+                                @endif
+                            </div>
+                            <p class="text-[10px] text-gray-400 font-bold">
+                                {{ \Carbon\Carbon::parse($trip->start_time)->format('d M, h:i A') }}
+                            </p>
+                        </td>
+
+                        <td class="p-6 font-mono text-center">
+                            <div class="flex flex-col items-center gap-1">
+                                <div>
+                                    <span class="text-gray-400">{{ number_format((int)$trip->start_odometer) }}</span>
+                                    @if($trip->end_odometer !== null)
+                                        <span class="text-reversso mx-1 font-bold">→</span>
+                                        <span class="font-black text-gray-900">{{ number_format((int)$trip->end_odometer) }}</span>
+                                    @endif
+                                </div>
+
+                                @if($deltaKm !== null)
+                                    <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                        +{{ number_format($deltaKm) }} km
+                                    </span>
+                                @endif
+                            </div>
+                        </td>
+
+                        <td class="p-6">
+                            <div class="flex items-center justify-center gap-4">
+                                <span class="px-3 py-1 rounded-full font-black uppercase text-[8px] border {{ !$trip->end_time ? 'bg-blue-50 text-blue-600 border-blue-100 animate-pulse' : 'bg-gray-50 text-gray-400 border-gray-100' }}">
+                                    {{ !$trip->end_time ? 'En Ruta' : 'Cerrado' }}
+                                </span>
+                            </div>
+                        </td>
+
+                        <td class="p-6 text-right">
+                            <div class="inline-flex items-center gap-2">
+                                @if(!$trip->end_time)
+                                   <button
+                                        type="button"
+                                        onclick="openEndTripModal(this)"
+                                        data-id="{{ $trip->id }}"
+                                        data-start="{{ (int) $trip->start_odometer }}"
+                                        class="bg-red-500 text-white px-5 py-2.5 rounded-2xl font-black uppercase text-[9px] hover:bg-red-600 transition-all"
+                                    >
+                                        Finalizar
+                                    </button>
+                                @endif
+
+                                @if(!empty($trip->observations))
+                                    <button
+                                        type="button"
+                                        onclick="openObservationsModal(@js($trip->observations))"
+                                        class="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
+                                        title="Ver observaciones"
+                                    >
+                                        <svg class="w-5 h-5 block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        </svg>
+                                    </button>
+                                @endif
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="5" class="p-20 text-center text-gray-300 font-black uppercase text-xs tracking-widest italic">Sin registros</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    {{-- ✅ PAGINACIÓN --}}
+    <div class="px-6 py-5 border-t border-gray-100">
+        {{ $trips->links() }}
+    </div>
+</div>
+
+{{-- ========================================================= --}}
+{{-- MODAL NUEVO REGISTRO --}}
+{{-- ========================================================= --}}
+<div id="modal-start-trip" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="toggleGlobalModal('modal-start-trip')"></div>
+
+    <div class="relative bg-white w-full max-w-md rounded-[40px] p-10 shadow-2xl">
+        <h3 class="text-2xl font-black text-gray-900 mb-6 uppercase italic text-center tracking-tighter">Nuevo Registro</h3>
+
+        {{-- ✅ ERRORES SOLO DEL MODAL START --}}
+        @if($errors->hasBag('startTrip') && $errors->startTrip->any())
+            <div class="mb-4 p-4 bg-red-50 text-red-700 text-[10px] font-black uppercase rounded-xl">
+                @foreach($errors->startTrip->all() as $error)
+                    <p>{{ $error }}</p>
+                @endforeach
+            </div>
+        @endif
+
+        <form action="{{ route('logistics.start') }}" method="POST" class="space-y-6">
+            @csrf
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Vehículo (Placa)</label>
+                <input
+                    type="text"
+                    name="vehicle_plate"
+                    value="{{ old('vehicle_plate') }}"
+                    required
+                    class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none uppercase"
+                    placeholder="ABC-123"
+                >
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Punto de Origen</label>
+                <input
+                    type="text"
+                    name="origin"
+                    value="{{ old('origin') }}"
+                    required
+                    class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none"
+                    placeholder="¿Dónde inicias?"
+                >
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Km Inicial</label>
+                <input
+                    type="number"
+                    name="start_odometer"
+                    value="{{ old('start_odometer') }}"
+                    required
+                    min="0"
+                    class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none"
+                    placeholder="00000"
+                >
+            </div>
+
+            <button type="submit" class="w-full bg-reversso text-white font-black py-5 rounded-2xl uppercase text-xs tracking-widest shadow-xl transition-all">
+                Iniciar Viaje
+            </button>
+        </form>
+    </div>
+</div>
+
+{{-- ========================================================= --}}
+{{-- MODAL FINALIZAR VIAJE --}}
+{{-- ========================================================= --}}
+<div id="modal-end-trip" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeEndTripModal()"></div>
+
+    <div class="relative bg-white w-full max-w-md rounded-[40px] p-10 shadow-2xl">
+        <h3 class="text-2xl font-black text-gray-900 mb-4 uppercase italic text-center tracking-tighter">Finalizar Viaje</h3>
+
+        {{-- ✅ ERRORES SOLO DEL MODAL END --}}
+        @if($errors->hasBag('endTrip') && $errors->endTrip->any())
+            <div class="mb-4 p-4 bg-red-50 text-red-700 text-[10px] font-black uppercase rounded-xl">
+                @foreach($errors->endTrip->all() as $error)
+                    <p>{{ $error }}</p>
+                @endforeach
+            </div>
+        @endif
+
+        <form action="{{ route('logistics.end') }}" method="POST" class="space-y-6">
+            @csrf
+            <input type="hidden" name="tracking_id" id="end_tracking_id" value="{{ old('tracking_id') }}">
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Km Inicial</label>
+                <input
+                    type="number"
+                    id="start_odometer_display"
+                    value=""
+                    readonly
+                    class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold text-gray-500 focus:ring-0 outline-none cursor-not-allowed"
+                    placeholder="--"
+                >
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Destino Final</label>
+                <input type="text" name="destination" value="{{ old('destination') }}" required class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none" placeholder="¿A dónde llegaste?">
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Km Final</label>
+                <input type="number" name="end_odometer" value="{{ old('end_odometer') }}" required min="0" class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none" placeholder="00000">
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Observaciones</label>
+                <textarea
+                    name="observations"
+                    rows="3"
+                    class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none resize-none"
+                    placeholder="Opcional: novedades del viaje..."
+                >{{ old('observations') }}</textarea>
+            </div>
+
+            <button type="submit" class="w-full bg-gray-900 text-white font-black py-5 rounded-2xl uppercase text-xs tracking-widest shadow-xl transition-all">
+                Cerrar Registro
+            </button>
+        </form>
+    </div>
+</div>
+
+{{-- MODAL VER OBSERVACIONES --}}
+<div id="modal-view-obs" class="hidden fixed inset-0 z-[110] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeObservationsModal()"></div>
+
+    <div class="relative bg-white w-full max-w-md rounded-[40px] p-10 shadow-2xl">
+        <h3 class="text-2xl font-black text-gray-900 mb-6 uppercase italic text-center tracking-tighter">
+            Observaciones
+        </h3>
+
+        <div class="bg-gray-50 rounded-2xl p-5 text-sm font-bold text-gray-700 whitespace-pre-wrap" id="obs_content"></div>
+
+        <button type="button" class="mt-8 w-full bg-gray-900 text-white font-black py-5 rounded-2xl uppercase text-xs tracking-widest shadow-xl transition-all" onclick="closeObservationsModal()">
+            Cerrar
+        </button>
+    </div>
+</div>
+
 <script>
-    function toggleModal(id) {
-        document.getElementById(id)?.classList.toggle('hidden');
+    /**
+     * ✅ AUTO-OPEN modal dependiendo de lo que mande el Controller.
+     * - start -> session('open_modal') = modal-start-trip
+     * - end   -> session('open_modal') = modal-end-trip
+     */
+    window.addEventListener('load', function () {
+        const openModal = @json(session('open_modal'));
+
+        if (!openModal) return;
+
+        if (openModal === 'modal-start-trip') {
+            const el = document.getElementById('modal-start-trip');
+            if (el) el.classList.remove('hidden');
+            return;
+        }
+
+        if (openModal === 'modal-end-trip') {
+            // Si viene tracking_id, lo seteamos
+            const trackingId = @json(old('tracking_id'));
+            if (trackingId) {
+                const input = document.getElementById('end_tracking_id');
+                if (input) input.value = trackingId;
+            }
+            const el = document.getElementById('modal-end-trip');
+            if (el) el.classList.remove('hidden');
+            return;
+        }
+    });
+
+    function openEndTripModal(btnOrId) {
+        // Soporta botón o id
+        let id = null;
+        let start = null;
+
+        // Si llega un elemento del DOM (button)
+        if (btnOrId instanceof HTMLElement) {
+            id = btnOrId.getAttribute('data-id');
+            start = btnOrId.getAttribute('data-start');
+        } else {
+            // fallback: si solo mandan el id
+            id = btnOrId;
+        }
+
+        // Set tracking id
+        const idInput = document.getElementById('end_tracking_id');
+        if (idInput) idInput.value = id || '';
+
+        // Set km inicial readonly
+        const startDisplay = document.getElementById('start_odometer_display');
+        if (startDisplay) startDisplay.value = start ?? '';
+
+        // end_odometer: min dinámico (start + 1) o limpiar min si no hay start
+        const endInput = document.querySelector('#modal-end-trip input[name="end_odometer"]');
+        if (endInput) {
+            if (start !== null && start !== '' && !Number.isNaN(Number(start))) {
+                const minVal = Number(start) + 1;
+                endInput.setAttribute('min', String(minVal));
+            } else {
+                // evita que quede min viejo de un viaje anterior
+                endInput.setAttribute('min', '0');
+            }
+        }
+
+        document.getElementById('modal-end-trip')?.classList.remove('hidden');
+    }
+
+    function closeEndTripModal() {
+        document.getElementById('modal-end-trip')?.classList.add('hidden');
+    }
+
+    function toggleGlobalModal(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.toggle('hidden');
+    }
+
+    function openObservationsModal(text) {
+        const el = document.getElementById('obs_content');
+        if (el) el.textContent = text || '';
+        document.getElementById('modal-view-obs').classList.remove('hidden');
+    }
+
+    function closeObservationsModal() {
+        document.getElementById('modal-view-obs').classList.add('hidden');
     }
 </script>
+
 @endsection

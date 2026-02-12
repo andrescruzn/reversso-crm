@@ -7,18 +7,23 @@ namespace App\Modules\Logistics\Presentation\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Logistics\TimeTracking\Application\Actions\StartTrackingAction;
 use App\Modules\Logistics\TimeTracking\Application\Actions\EndTrackingAction;
-use App\Modules\Logistics\TimeTracking\Infrastructure\Models\TimeTracking; // IMPORTANTE: Importación del modelo
+use App\Modules\Logistics\TimeTracking\Infrastructure\Models\TimeTracking;
 use App\Common\Services\ServiceResult;
+use Carbon\Carbon;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
-use Carbon\Carbon;
 
 /**
- * Clase TimeTrackingController
+ * TimeTrackingController
  * Gestiona el ciclo de vida de los viajes operativos (Tracking).
+ *
+ * Objetivo UI:
+ * - Los errores (validación/negocio) deben verse dentro del modal correspondiente.
+ * - Para eso usamos Error Bags separados: startTrip / endTrip
+ * - Y una bandera: session('open_modal') para reabrir el modal.
  */
 class TimeTrackingController extends Controller
 {
@@ -32,7 +37,9 @@ class TimeTrackingController extends Controller
      */
     public function start(Request $request): RedirectResponse
     {
-        // Regla de Negocio: Verificar que exista una jornada activa (Cumple SRP)
+        // ================================================================
+        // 1) REGLA: Debe existir jornada activa
+        // ================================================================
         $activeAttendance = DB::table('user_attendance')
             ->where('user_id', Auth::id())
             ->where('status', 'active')
@@ -40,16 +47,63 @@ class TimeTrackingController extends Controller
             ->exists();
 
         if (!$activeAttendance) {
-            return redirect()->back()->with('error', 'Debes marcar entrada en el Reloj de Personal antes de iniciar un viaje.');
+            // ✅ Error dentro del modal START
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('open_modal', 'modal-start-trip')
+                ->withErrors(
+                    ['attendance' => 'Debes marcar entrada en el Reloj de Personal antes de iniciar un viaje.'],
+                    'startTrip'
+                );
         }
 
+        // ================================================================
+        // 2) VALIDACIÓN (en bag startTrip)
+        // ================================================================
+        $validated = $request->validateWithBag('startTrip', [
+            'vehicle_plate'  => ['required', 'string', 'max:10'],
+            'origin'         => ['required', 'string', 'max:255'],
+            'start_odometer' => ['required', 'numeric', 'min:0'],
+        ], [
+            'vehicle_plate.required'  => 'La placa del vehículo es obligatoria.',
+            'vehicle_plate.max'       => 'La placa no puede exceder 10 caracteres.',
+            'origin.required'         => 'El lugar de origen es obligatorio.',
+            'start_odometer.required' => 'El odómetro inicial es obligatorio.',
+            'start_odometer.numeric'  => 'El odómetro debe ser un número válido.',
+            'start_odometer.min'      => 'El odómetro no puede ser negativo.',
+        ]);
+
+        // ================================================================
+        // 3) NORMALIZACIÓN
+        // ================================================================
+        $vehiclePlate = strtoupper(trim((string) $validated['vehicle_plate']));
+        $origin = trim((string) $validated['origin']);
+        $startOdometer = (float) $validated['start_odometer'];
+
+        // ================================================================
+        // 4) EJECUCIÓN (Action)
+        // ================================================================
         $result = $this->startAction->execute(
             userId: (int) Auth::id(),
-            origin: $request->get('origin', 'Base Operativa'),
-            startOdometer: (float) $request->get('start_odometer')
+            vehiclePlate: $vehiclePlate,
+            origin: $origin,
+            startOdometer: $startOdometer
         );
 
-        return $this->handleResult($result);
+        // ✅ Si falla -> modal START
+        if ($result->isFailure()) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('open_modal', 'modal-start-trip')
+                ->withErrors(['start' => $result->message], 'startTrip');
+        }
+
+        // ✅ Éxito global (está bien que salga arriba)
+        return redirect()
+            ->back()
+            ->with('success', $result->message);
     }
 
     /**
@@ -57,14 +111,42 @@ class TimeTrackingController extends Controller
      */
     public function end(Request $request): RedirectResponse
     {
+        // ================================================================
+        // 1) VALIDACIÓN (en bag endTrip)
+        // ================================================================
+        $validated = $request->validateWithBag('endTrip', [
+            'destination'  => ['required', 'string', 'max:255'],
+            'end_odometer' => ['required', 'numeric', 'min:0'],
+            'observations' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'destination.required'  => 'El destino final es obligatorio.',
+            'end_odometer.required' => 'El odómetro final es obligatorio.',
+            'end_odometer.numeric'  => 'El odómetro debe ser un número válido.',
+            'end_odometer.min'      => 'El odómetro no puede ser negativo.',
+        ]);
+
+        // ================================================================
+        // 2) EJECUCIÓN (Action)
+        // ================================================================
         $result = $this->endAction->execute(
             userId: (int) Auth::id(),
-            destination: $request->get('destination', 'Base Operativa'),
-            endOdometer: (float) $request->get('end_odometer'),
-            observations: $request->get('observations')
+            destination: trim((string) $validated['destination']),
+            endOdometer: (float) $validated['end_odometer'],
+            observations: $validated['observations'] ?? null
         );
 
-        return $this->handleResult($result);
+        // ✅ Si falla -> modal END
+        if ($result->isFailure()) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('open_modal', 'modal-end-trip')
+                ->withErrors(['end_odometer' => $result->message], 'endTrip');
+        }
+
+        return redirect()
+            ->back()
+            ->with('success', $result->message);
     }
 
     /**
@@ -75,7 +157,7 @@ class TimeTrackingController extends Controller
         $userId = Auth::id();
         $dateFilter = $request->get('date', Carbon::now('America/Bogota')->toDateString());
 
-        $trips = TimeTracking::where('user_id', $userId) // Usamos el modelo en lugar de DB table para aprovechar casts
+        $trips = TimeTracking::where('user_id', $userId)
             ->whereDate('start_time', $dateFilter)
             ->orderBy('start_time', 'desc')
             ->get();
@@ -83,39 +165,24 @@ class TimeTrackingController extends Controller
         return view('modules.logistics.history', [
             'trips'      => $trips,
             'dateFilter' => $dateFilter,
-            'user'       => Auth::user()
+            'user'       => Auth::user(),
         ]);
     }
 
     /**
-     * Aprueba un registro de tiempo (Acción Administrativa).
+     * Admin approve (si lo sigues usando aquí).
      */
     public function approve(int $id): RedirectResponse
     {
-        // Localización del recurso mediante el Modelo importado
         $tracking = TimeTracking::findOrFail($id);
 
-        // Actualización de auditoría administrativa
         $tracking->update([
             'approved_at' => now(),
             'approved_by' => Auth::id(),
         ]);
 
-        // Redirección con Flash Message para la alerta configurada en el Dashboard
         return redirect()
             ->route('logistics.index')
-            ->with('status', '¡Registro aprobado con éxito!');
-    }
-
-    /**
-     * Centralización de respuesta (DRY).
-     */
-    private function handleResult(ServiceResult $result): RedirectResponse
-    {
-        $type = $result->isSuccess() ? 'success' : 'error';
-
-        return redirect()
-            ->back()
-            ->with($type, $result->message);
+            ->with('success', '¡Registro aprobado con éxito!');
     }
 }

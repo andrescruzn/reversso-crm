@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Collection;
  * Contrato del repositorio de Time Tracking.
  *
  * RESPONSABILIDAD:
- * Definir operaciones de acceso a datos para registros de tiempo.
+ * Definir operaciones de acceso a datos para registros de tiempo (viajes).
  */
 interface TimeTrackingRepositoryInterface
 {
@@ -21,7 +21,7 @@ interface TimeTrackingRepositoryInterface
     public function findById(int $id): ?TimeTracking;
 
     /**
-     * Obtener registro activo de un usuario.
+     * Obtener registro activo (IN_PROGRESS) de un usuario.
      */
     public function findActiveByUserId(int $userId): ?TimeTracking;
 

@@ -27,6 +27,8 @@ class AppServiceProvider extends ServiceProvider
         // =====================================================================
         // BINDINGS DE REPOSITORIOS (SOLID: Inversión de Dependencia)
         // =====================================================================
+        // Cuando el Controller pida "TimeTrackingRepositoryInterface",
+        // Laravel le entregará una instancia de "EloquentTimeTrackingRepository".
         $this->app->bind(
             TimeTrackingRepositoryInterface::class,
             EloquentTimeTrackingRepository::class
