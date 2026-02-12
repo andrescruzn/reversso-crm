@@ -7,6 +7,8 @@ namespace App\Providers;
 use App\Common\Http\Middleware\RoleMiddleware;
 use App\Modules\Logistics\TimeTracking\Domain\Contracts\TimeTrackingRepositoryInterface;
 use App\Modules\Logistics\TimeTracking\Infrastructure\Repositories\EloquentTimeTrackingRepository;
+use App\Modules\Logistics\Attendance\Domain\Contracts\AttendanceRepositoryInterface;
+use App\Modules\Logistics\Attendance\Infrastructure\Persistence\EloquentAttendanceRepository;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Pagination\Paginator;
@@ -27,11 +29,17 @@ class AppServiceProvider extends ServiceProvider
         // =====================================================================
         // BINDINGS DE REPOSITORIOS (SOLID: Inversión de Dependencia)
         // =====================================================================
-        // Cuando el Controller pida "TimeTrackingRepositoryInterface",
-        // Laravel le entregará una instancia de "EloquentTimeTrackingRepository".
         $this->app->bind(
             TimeTrackingRepositoryInterface::class,
             EloquentTimeTrackingRepository::class
+        );
+
+        // =====================================================================
+        // BINDING: AttendanceRepository (para cálculo Colombia)
+        // =====================================================================
+        $this->app->bind(
+            AttendanceRepositoryInterface::class,
+            EloquentAttendanceRepository::class
         );
     }
 

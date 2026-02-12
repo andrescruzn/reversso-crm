@@ -5,45 +5,37 @@ declare(strict_types=1);
 namespace App\Modules\Logistics\Overtime\Application\Services;
 
 use App\Common\Services\ServiceResult;
-use App\Modules\Logistics\TimeTracking\Domain\Contracts\TimeTrackingRepositoryInterface;
+use App\Modules\Logistics\Attendance\Domain\Contracts\AttendanceRepositoryInterface;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 
 /**
- * Servicio de cálculo de horas extras.
+ * Servicio de cálculo de horas extras y recargos (Colombia).
  *
- * RESPONSABILIDAD:
- * Calcular horas extras y recargos según legislación colombiana.
+ * PATRÓN:
+ * - Application Service (orquesta cálculo)
+ * - Repository Pattern (trae data de asistencia)
  *
- * LEGISLACIÓN COLOMBIANA:
- * - Jornada ordinaria: 47 horas semanales
- * - Nocturno (21:00-06:00): +35%
- * - Dominical/Festivo: +75%
- * - Extra diurna: +25%
- * - Extra nocturna: +75%
- * - Extra dominical diurna: +100%
- * - Extra dominical nocturna: +150%
+ * REGLA DE NEGOCIO:
+ * - Clasificar minutos trabajados como:
+ *   - Diurno / Nocturno
+ *   - Normal / Dominical-Festivo
+ *   - Ordinario / Extra (por exceder el límite semanal vigente)
+ *
+ * NOTA:
+ * - "Nocturno" NO es "extra" automáticamente. Es recargo por franja horaria.
+ * - "Extra" se define por exceder el límite semanal (44/42 según fecha).
  */
-class OvertimeCalculatorService
+final class OvertimeCalculatorService
 {
-    // Constantes de legislación colombiana
-    private const WEEKLY_REGULAR_HOURS = 47;
-    private const NIGHT_START_HOUR = 21; // 21:00
-    private const NIGHT_END_HOUR = 6;    // 06:00
-
-    // Recargos (porcentajes)
-    private const SURCHARGE_NIGHT = 0.35;           // +35%
-    private const SURCHARGE_HOLIDAY = 0.75;         // +75%
-    private const SURCHARGE_OVERTIME_DAY = 0.25;    // +25%
-    private const SURCHARGE_OVERTIME_NIGHT = 0.75;  // +75%
-    private const SURCHARGE_OVERTIME_HOLIDAY_DAY = 1.00;   // +100%
-    private const SURCHARGE_OVERTIME_HOLIDAY_NIGHT = 1.50; // +150%
+    private const MINUTES_PER_HOUR = 60;
 
     public function __construct(
-        private readonly TimeTrackingRepositoryInterface $repository
+        private readonly AttendanceRepositoryInterface $attendanceRepository
     ) {}
 
     /**
-     * Calcular horas extras de un usuario en un rango de fechas.
+     * Calcular horas y recargos de un usuario en un rango.
      */
     public function calculateOvertime(
         int $userId,
@@ -51,188 +43,436 @@ class OvertimeCalculatorService
         string $endDate
     ): ServiceResult {
         // =====================================================================
-        // 1. OBTENER REGISTROS EN EL RANGO
+        // 1) Traer asistencias cerradas del rango
         // =====================================================================
+        $attendances = $this->attendanceRepository
+            ->getClosedByUserAndDateRange($userId, $startDate, $endDate);
 
-        $trackings = $this->repository->getByDateRange($userId, $startDate, $endDate);
-
-        if ($trackings->isEmpty()) {
+        if ($attendances->isEmpty()) {
             return ServiceResult::ok(
-                data: [
-                    'total_hours' => 0,
-                    'regular_hours' => 0,
-                    'overtime_hours' => 0,
-                    'breakdown' => [],
-                ],
-                message: 'No hay registros en el rango de fechas'
+                data: $this->emptyResult($startDate, $endDate),
+                message: 'No hay asistencias cerradas en el rango'
             );
         }
 
         // =====================================================================
-        // 2. CALCULAR HORAS POR CATEGORÍA
+        // 2) Construir "minutos trabajados" por semana ISO, preservando flags
         // =====================================================================
-
-        $breakdown = [
-            'regular_day' => 0,
-            'regular_night' => 0,
-            'overtime_day' => 0,
-            'overtime_night' => 0,
-            'holiday_day' => 0,
-            'holiday_night' => 0,
-            'overtime_holiday_day' => 0,
-            'overtime_holiday_night' => 0,
-        ];
-
-        $totalWeeklyHours = 0;
-
-        foreach ($trackings as $tracking) {
-            $hours = $this->categorizeHours($tracking);
-
-            foreach ($hours as $category => $value) {
-                $breakdown[$category] += $value;
-            }
-
-            $totalWeeklyHours += $tracking->getDurationInHours();
-        }
+        $minutesByIsoWeek = $this->buildMinutesByIsoWeek($attendances);
 
         // =====================================================================
-        // 3. CALCULAR RECARGOS
+        // 3) Clasificar minutos como ordinarios vs extra por límite semanal
         // =====================================================================
-
-        $surcharges = $this->calculateSurcharges($breakdown);
+        $breakdownMinutes = $this->classifyMinutesWithWeeklyLimit($minutesByIsoWeek);
 
         // =====================================================================
-        // 4. PREPARAR RESULTADO
+        // 4) Convertir a horas y calcular recargos/multiplicadores (presentación cruda)
         // =====================================================================
+        $breakdownHours = $this->minutesBreakdownToHours($breakdownMinutes);
+        $surcharges = $this->calculateSurcharges($breakdownHours);
 
-        $result = [
-            'period' => [
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-            ],
-            'total_hours' => round($totalWeeklyHours, 2),
-            'regular_hours' => min($totalWeeklyHours, self::WEEKLY_REGULAR_HOURS),
-            'overtime_hours' => max(0, $totalWeeklyHours - self::WEEKLY_REGULAR_HOURS),
-            'breakdown' => [
-                'regular_day' => round($breakdown['regular_day'], 2),
-                'regular_night' => round($breakdown['regular_night'], 2),
-                'overtime_day' => round($breakdown['overtime_day'], 2),
-                'overtime_night' => round($breakdown['overtime_night'], 2),
-                'holiday_day' => round($breakdown['holiday_day'], 2),
-                'holiday_night' => round($breakdown['holiday_night'], 2),
-                'overtime_holiday_day' => round($breakdown['overtime_holiday_day'], 2),
-                'overtime_holiday_night' => round($breakdown['overtime_holiday_night'], 2),
-            ],
-            'surcharges' => $surcharges,
-        ];
+        // =====================================================================
+        // 5) Totales
+        // =====================================================================
+        $totalHours = $this->sumBreakdownHours($breakdownHours);
 
         return ServiceResult::ok(
-            data: $result,
-            message: 'Cálculo de horas extras completado'
+            data: [
+                'period' => [
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                ],
+                'total_hours' => round($totalHours, 2),
+                'breakdown' => $breakdownHours,
+                'surcharges' => $surcharges,
+            ],
+            message: 'Cálculo Colombia completado'
         );
     }
 
-    /**
-     * Categorizar horas de un registro según tipo.
-     */
-    private function categorizeHours($tracking): array
-    {
-        $start = Carbon::parse($tracking->start_time);
-        $end = Carbon::parse($tracking->end_time);
-        $isHoliday = $tracking->is_holiday;
+    // ======================================================================
+    // Helpers de dominio del cálculo (privados)
+    // ======================================================================
 
-        $hours = [
+    private function emptyResult(string $startDate, string $endDate): array
+    {
+        return [
+            'period' => ['start_date' => $startDate, 'end_date' => $endDate],
+            'total_hours' => 0,
+            'breakdown' => [
+                'regular_day' => 0,
+                'regular_night' => 0,
+                'holiday_day' => 0,
+                'holiday_night' => 0,
+                'overtime_day' => 0,
+                'overtime_night' => 0,
+                'overtime_holiday_day' => 0,
+                'overtime_holiday_night' => 0,
+            ],
+            'surcharges' => [],
+        ];
+    }
+
+    /**
+     * Construir minutos por semana ISO:
+     * - Key: "YYYY-Www" (ej: 2026-W07)
+     * - Value: lista de minutos (fecha-hora) con flags night/holiday
+     *
+     * Importante:
+     * - Iteramos por minuto para exactitud (sin truncar parciales).
+     */
+    private function buildMinutesByIsoWeek(Collection $attendances): array
+    {
+        $minutesByWeek = [];
+
+        foreach ($attendances as $attendance) {
+            $start = Carbon::parse($attendance->check_in);
+            $end = Carbon::parse($attendance->check_out);
+
+            // Seguridad: si hay datos raros, saltar
+            if ($end->lessThanOrEqualTo($start)) {
+                continue;
+            }
+
+            // Iteración minuto a minuto (precisa)
+            $current = $start->copy();
+
+            while ($current->lessThan($end)) {
+                $weekKey = $current->isoFormat('GGGG-[W]WW');
+
+                $minutesByWeek[$weekKey] ??= [];
+                $minutesByWeek[$weekKey][] = [
+                    'dt' => $current->copy(),
+                    'is_night' => $this->isNightTime($current),
+                    // Si tu attendance ya trae is_holiday, lo respetamos.
+                    // Si no, al menos detectamos domingo (mejora mínima).
+                    'is_holiday' => $this->isHolidayMinute($current, (bool) ($attendance->is_holiday ?? false)),
+                ];
+
+                $current->addMinute();
+            }
+        }
+
+        return $minutesByWeek;
+    }
+
+    /**
+     * Aplicar el límite semanal vigente:
+     * - Recorremos minutos en orden cronológico por semana.
+     * - Los primeros N minutos (límite semanal) son ordinarios.
+     * - El resto son extra.
+     *
+     * Mantiene:
+     * - night/day
+     * - holiday/normal
+     */
+    private function classifyMinutesWithWeeklyLimit(array $minutesByIsoWeek): array
+    {
+        $result = [
             'regular_day' => 0,
             'regular_night' => 0,
-            'overtime_day' => 0,
-            'overtime_night' => 0,
             'holiday_day' => 0,
             'holiday_night' => 0,
+            'overtime_day' => 0,
+            'overtime_night' => 0,
             'overtime_holiday_day' => 0,
             'overtime_holiday_night' => 0,
         ];
 
-        // Iterar por cada hora del registro
-        $current = $start->copy();
-        while ($current < $end) {
-            $nextHour = $current->copy()->addHour();
-            if ($nextHour > $end) {
-                $nextHour = $end;
+        foreach ($minutesByIsoWeek as $weekKey => $minutesList) {
+            // Orden cronológico por seguridad
+            usort($minutesList, fn ($a, $b) => $a['dt']->getTimestamp() <=> $b['dt']->getTimestamp());
+
+            $weekStart = $minutesList[0]['dt']->copy()->startOfWeek(Carbon::MONDAY);
+            $weeklyLimitMinutes = $this->getWeeklyLimitMinutesForDate($weekStart);
+
+            $minuteIndex = 0;
+
+            foreach ($minutesList as $minute) {
+                $isOvertime = $minuteIndex >= $weeklyLimitMinutes;
+
+                $bucket = $this->resolveBucket(
+                    isHoliday: (bool) $minute['is_holiday'],
+                    isNight: (bool) $minute['is_night'],
+                    isOvertime: $isOvertime
+                );
+
+                $result[$bucket] += 1; // 1 minuto
+                $minuteIndex++;
             }
-
-            $hoursInPeriod = $current->diffInHours($nextHour, true);
-            $isNight = $this->isNightTime($current);
-
-            if ($isHoliday) {
-                if ($isNight) {
-                    $hours['holiday_night'] += $hoursInPeriod;
-                } else {
-                    $hours['holiday_day'] += $hoursInPeriod;
-                }
-            } else {
-                if ($isNight) {
-                    $hours['regular_night'] += $hoursInPeriod;
-                } else {
-                    $hours['regular_day'] += $hoursInPeriod;
-                }
-            }
-
-            $current = $nextHour;
         }
 
-        return $hours;
+        return $result;
+    }
+
+    private function resolveBucket(bool $isHoliday, bool $isNight, bool $isOvertime): string
+    {
+        if ($isHoliday) {
+            if ($isOvertime) {
+                return $isNight ? 'overtime_holiday_night' : 'overtime_holiday_day';
+            }
+            return $isNight ? 'holiday_night' : 'holiday_day';
+        }
+
+        if ($isOvertime) {
+            return $isNight ? 'overtime_night' : 'overtime_day';
+        }
+
+        return $isNight ? 'regular_night' : 'regular_day';
     }
 
     /**
-     * Verificar si una hora es nocturna (21:00 - 06:00).
+     * Nocturno: 19:00 - 06:00 (desde 2025-12-25)
      */
     private function isNightTime(Carbon $time): bool
     {
-        $hour = $time->hour;
-        return $hour >= self::NIGHT_START_HOUR || $hour < self::NIGHT_END_HOUR;
+        $nightConfig = config('overtime.night');
+        $effectiveFrom = Carbon::parse((string) $nightConfig['effective_from']);
+
+        // Si la fecha es anterior a la vigencia, usa el esquema anterior (21:00) por compatibilidad.
+        $startHour = $time->greaterThanOrEqualTo($effectiveFrom)
+            ? (int) $nightConfig['start_hour']
+            : 21;
+
+        $endHour = (int) $nightConfig['end_hour'];
+
+        $hour = (int) $time->hour;
+
+        return $hour >= $startHour || $hour < $endHour;
     }
 
     /**
-     * Calcular recargos en pesos (asumiendo valor hora base).
+     * Festivo/dominical:
+     * - Si el registro ya venía marcado como festivo, lo respetamos.
+     * - Si no, mínimo detectamos domingo por calendario.
+     *
+     * Mejora posterior (recomendada):
+     * - Cruzar con tabla calendar_day_off / festivos legales.
      */
-    private function calculateSurcharges(array $breakdown): array
+    private function isHolidayMinute(Carbon $time, bool $explicitHolidayFlag): bool
     {
+        if ($explicitHolidayFlag) {
+            return true;
+        }
+
+        // Domingo
+        return $time->isSunday();
+    }
+
+    private function getWeeklyLimitMinutesForDate(Carbon $dateInWeek): int
+    {
+        $weeklyLimits = (array) config('overtime.weekly_limits');
+
+        foreach ($weeklyLimits as $rule) {
+            $from = Carbon::parse((string) $rule['from'])->startOfDay();
+            $to = isset($rule['to']) && $rule['to']
+                ? Carbon::parse((string) $rule['to'])->endOfDay()
+                : null;
+
+            if ($dateInWeek->betweenIncluded($from, $to ?? $dateInWeek->copy()->addYears(50))) {
+                return ((int) $rule['hours']) * self::MINUTES_PER_HOUR;
+            }
+        }
+
+        // Fallback conservador: 44h
+        return 44 * self::MINUTES_PER_HOUR;
+    }
+
+    private function minutesBreakdownToHours(array $breakdownMinutes): array
+    {
+        $toHours = fn (int $m) => round($m / self::MINUTES_PER_HOUR, 4);
+
         return [
+            'regular_day' => $toHours((int) $breakdownMinutes['regular_day']),
+            'regular_night' => $toHours((int) $breakdownMinutes['regular_night']),
+            'holiday_day' => $toHours((int) $breakdownMinutes['holiday_day']),
+            'holiday_night' => $toHours((int) $breakdownMinutes['holiday_night']),
+            'overtime_day' => $toHours((int) $breakdownMinutes['overtime_day']),
+            'overtime_night' => $toHours((int) $breakdownMinutes['overtime_night']),
+            'overtime_holiday_day' => $toHours((int) $breakdownMinutes['overtime_holiday_day']),
+            'overtime_holiday_night' => $toHours((int) $breakdownMinutes['overtime_holiday_night']),
+        ];
+    }
+
+    private function sumBreakdownHours(array $breakdownHours): float
+    {
+        return array_sum(array_map(
+            fn ($v) => (float) $v,
+            $breakdownHours
+        ));
+    }
+
+    /**
+     * Calcula “multiplicadores” por categoría (sin pesos).
+     * La liquidación en pesos debe hacerse en nómina con valor hora base.
+     */
+    private function calculateSurcharges(array $breakdownHours): array
+    {
+        $night = (float) config('overtime.night.surcharge');
+
+        $holidaySurcharge = $this->resolveHolidaySurchargeForNow();
+        $ot = (array) config('overtime.overtime_surcharges');
+
+        return [
+            // Recargos ordinarios
             'regular_night' => [
-                'hours' => round($breakdown['regular_night'], 2),
-                'percentage' => self::SURCHARGE_NIGHT * 100,
-                'multiplier' => 1 + self::SURCHARGE_NIGHT,
+                'hours' => round($breakdownHours['regular_night'], 2),
+                'percentage' => $night * 100,
+                'multiplier' => 1 + $night,
             ],
             'holiday_day' => [
-                'hours' => round($breakdown['holiday_day'], 2),
-                'percentage' => self::SURCHARGE_HOLIDAY * 100,
-                'multiplier' => 1 + self::SURCHARGE_HOLIDAY,
+                'hours' => round($breakdownHours['holiday_day'], 2),
+                'percentage' => $holidaySurcharge * 100,
+                'multiplier' => 1 + $holidaySurcharge,
             ],
             'holiday_night' => [
-                'hours' => round($breakdown['holiday_night'], 2),
-                'percentage' => (self::SURCHARGE_NIGHT + self::SURCHARGE_HOLIDAY) * 100,
-                'multiplier' => 1 + self::SURCHARGE_NIGHT + self::SURCHARGE_HOLIDAY,
+                'hours' => round($breakdownHours['holiday_night'], 2),
+                'percentage' => ($holidaySurcharge + $night) * 100,
+                'multiplier' => 1 + $holidaySurcharge + $night,
             ],
+
+            // Horas extra
             'overtime_day' => [
-                'hours' => round($breakdown['overtime_day'], 2),
-                'percentage' => self::SURCHARGE_OVERTIME_DAY * 100,
-                'multiplier' => 1 + self::SURCHARGE_OVERTIME_DAY,
+                'hours' => round($breakdownHours['overtime_day'], 2),
+                'percentage' => ((float) $ot['day']) * 100,
+                'multiplier' => 1 + (float) $ot['day'],
             ],
             'overtime_night' => [
-                'hours' => round($breakdown['overtime_night'], 2),
-                'percentage' => self::SURCHARGE_OVERTIME_NIGHT * 100,
-                'multiplier' => 1 + self::SURCHARGE_OVERTIME_NIGHT,
+                'hours' => round($breakdownHours['overtime_night'], 2),
+                'percentage' => ((float) $ot['night']) * 100,
+                'multiplier' => 1 + (float) $ot['night'],
             ],
             'overtime_holiday_day' => [
-                'hours' => round($breakdown['overtime_holiday_day'], 2),
-                'percentage' => self::SURCHARGE_OVERTIME_HOLIDAY_DAY * 100,
-                'multiplier' => 1 + self::SURCHARGE_OVERTIME_HOLIDAY_DAY,
+                'hours' => round($breakdownHours['overtime_holiday_day'], 2),
+                'percentage' => ((float) $ot['holiday_day']) * 100,
+                'multiplier' => 1 + (float) $ot['holiday_day'],
             ],
             'overtime_holiday_night' => [
-                'hours' => round($breakdown['overtime_holiday_night'], 2),
-                'percentage' => self::SURCHARGE_OVERTIME_HOLIDAY_NIGHT * 100,
-                'multiplier' => 1 + self::SURCHARGE_OVERTIME_HOLIDAY_NIGHT,
+                'hours' => round($breakdownHours['overtime_holiday_night'], 2),
+                'percentage' => ((float) $ot['holiday_night']) * 100,
+                'multiplier' => 1 + (float) $ot['holiday_night'],
             ],
         ];
     }
+
+    /**
+     * Recargo dominical/festivo según escalones (progresivo).
+     * Elegimos el último escalón aplicable para "hoy".
+     */
+    private function resolveHolidaySurchargeForNow(): float
+    {
+        $steps = (array) config('overtime.holiday_surcharge_steps');
+        $today = Carbon::now()->startOfDay();
+
+        $value = 0.75; // fallback histórico
+
+        foreach ($steps as $step) {
+            $from = Carbon::parse((string) $step['from'])->startOfDay();
+            if ($today->greaterThanOrEqualTo($from)) {
+                $value = (float) $step['value'];
+            }
+        }
+
+        return $value;
+    }
+
+    public function calculateOvertimeDailyBreakdown(
+        int $userId,
+        string $startDate,
+        string $endDate
+    ): ServiceResult {
+        $attendances = $this->attendanceRepository
+            ->getClosedByUserAndDateRange($userId, $startDate, $endDate);
+
+        if ($attendances->isEmpty()) {
+            return ServiceResult::ok(
+                data: [
+                    'period' => ['start_date' => $startDate, 'end_date' => $endDate],
+                    'daily' => [],
+                    'totals' => $this->emptyResult($startDate, $endDate),
+                ],
+                message: 'No hay asistencias cerradas en el rango'
+            );
+        }
+
+        $minutesByIsoWeek = $this->buildMinutesByIsoWeek($attendances);
+
+        // 👇 NUEVO: clasifica y devuelve también por día
+        [$totalsMinutes, $dailyMinutes] = $this->classifyMinutesWithWeeklyLimitDaily($minutesByIsoWeek);
+
+        $totalsHours = $this->minutesBreakdownToHours($totalsMinutes);
+
+        $dailyHours = [];
+        foreach ($dailyMinutes as $day => $breakdownMinutes) {
+            $dailyHours[$day] = $this->minutesBreakdownToHours($breakdownMinutes);
+            $dailyHours[$day]['total_hours'] = $this->sumBreakdownHours($dailyHours[$day]);
+        }
+
+        return ServiceResult::ok(
+            data: [
+                'period' => ['start_date' => $startDate, 'end_date' => $endDate],
+                'daily' => $dailyHours,
+                'totals' => [
+                    'total_hours' => round($this->sumBreakdownHours($totalsHours), 2),
+                    'breakdown' => $totalsHours,
+                ],
+            ],
+            message: 'Cálculo diario Colombia completado'
+        );
+    }
+
+    private function classifyMinutesWithWeeklyLimitDaily(array $minutesByIsoWeek): array
+    {
+        $totals = [
+            'regular_day' => 0,
+            'regular_night' => 0,
+            'holiday_day' => 0,
+            'holiday_night' => 0,
+            'overtime_day' => 0,
+            'overtime_night' => 0,
+            'overtime_holiday_day' => 0,
+            'overtime_holiday_night' => 0,
+        ];
+
+        $daily = [];
+
+        foreach ($minutesByIsoWeek as $minutesList) {
+            usort($minutesList, fn ($a, $b) => $a['dt']->getTimestamp() <=> $b['dt']->getTimestamp());
+
+            $weekStart = $minutesList[0]['dt']->copy()->startOfWeek(Carbon::MONDAY);
+            $weeklyLimitMinutes = $this->getWeeklyLimitMinutesForDate($weekStart);
+
+            $minuteIndex = 0;
+
+            foreach ($minutesList as $minute) {
+                $isOvertime = $minuteIndex >= $weeklyLimitMinutes;
+
+                $bucket = $this->resolveBucket(
+                    isHoliday: (bool) $minute['is_holiday'],
+                    isNight: (bool) $minute['is_night'],
+                    isOvertime: $isOvertime
+                );
+
+                $totals[$bucket] += 1;
+
+                $dayKey = $minute['dt']->toDateString();
+                $daily[$dayKey] ??= [
+                    'regular_day' => 0,
+                    'regular_night' => 0,
+                    'holiday_day' => 0,
+                    'holiday_night' => 0,
+                    'overtime_day' => 0,
+                    'overtime_night' => 0,
+                    'overtime_holiday_day' => 0,
+                    'overtime_holiday_night' => 0,
+                ];
+                $daily[$dayKey][$bucket] += 1;
+
+                $minuteIndex++;
+            }
+        }
+
+        return [$totals, $daily];
+    }
+
 }
