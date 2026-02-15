@@ -6,11 +6,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=0">
     <title>REVERSSO CRM</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        orange: {
+                            50:  '#fef6e8',
+                            100: '#fde9c4',
+                            200: '#fbd48e',
+                            300: '#f5b94d',
+                            400: '#f0a520',
+                            500: '#E8960C',
+                            600: '#c97d08',
+                            700: '#a66306',
+                            800: '#7d4b05',
+                            900: '#5c3704',
+                            950: '#3a2202',
+                        },
+                    },
+                },
+            },
+        }
+    </script>
 
     <style>
-        .text-reversso { color: #FF6B00; }
-        .bg-reversso { background-color: #FF6B00; }
-        .border-reversso { border-color: #FF6B00; }
+        .text-reversso { color: #E8960C; }
+        .bg-reversso { background-color: #E8960C; }
+        .border-reversso { border-color: #E8960C; }
+        .shadow-reversso { --tw-shadow-color: #E8960C; }
 
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
@@ -28,10 +52,10 @@
     {{-- SIDEBAR --}}
     <aside
         id="sidebar"
-        class="fixed inset-y-0 left-0 z-[70] w-64 bg-reversso flex flex-col flex-shrink-0 shadow-2xl transition-transform duration-300 ease-in-out md:relative md:translate-x-0 sidebar-closed"
+        class="fixed inset-y-0 left-0 z-[70] w-64 bg-gray-950 flex flex-col flex-shrink-0 shadow-2xl transition-transform duration-300 ease-in-out md:relative md:translate-x-0 sidebar-closed"
     >
         <div class="h-20 flex items-center justify-between px-8">
-            <span class="text-2xl font-black italic tracking-tighter text-white">REVERSSO</span>
+            <img src="{{ asset('images/logo.webp') }}" alt="Reversso" class="h-10">
             <button onclick="toggleSidebar()" class="md:hidden text-white">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -42,7 +66,7 @@
         <nav class="mt-8 px-4 space-y-2 flex-1">
             <a
                 href="{{ route('dashboard') }}"
-                class="{{ request()->routeIs('dashboard') ? 'bg-white text-reversso' : 'text-white hover:bg-white/10' }} flex items-center px-4 py-3 rounded-2xl transition-all"
+                class="{{ request()->routeIs('dashboard') ? 'bg-reversso text-white' : 'text-white hover:bg-white/10' }} flex items-center px-4 py-3 rounded-2xl transition-all"
             >
                 <span class="font-black text-xs uppercase tracking-widest italic">Inicio</span>
             </a>
@@ -51,7 +75,7 @@
             @if(auth()->user()->hasAnyRole(['Administrador', 'Conductor']))
                 <a
                     href="{{ route('logistics.index') }}"
-                    class="{{ request()->routeIs('logistics.*') ? 'bg-white text-reversso' : 'text-white hover:bg-white/10' }} flex items-center px-4 py-3 rounded-2xl transition-all"
+                    class="{{ request()->routeIs('logistics.*') ? 'bg-reversso text-white' : 'text-white hover:bg-white/10' }} flex items-center px-4 py-3 rounded-2xl transition-all"
                 >
                     <span class="font-black text-xs uppercase tracking-widest italic">Logística</span>
                 </a>
@@ -61,14 +85,14 @@
             @if(auth()->user()->hasRole('Administrador'))
                 <a
                     href="{{ route('attendance.report') }}"
-                    class="{{ request()->routeIs('attendance.report') ? 'bg-white text-reversso' : 'text-white hover:bg-white/10' }} flex items-center px-4 py-3 rounded-2xl transition-all text-xs font-black uppercase tracking-widest italic"
+                    class="{{ request()->routeIs('attendance.report') ? 'bg-reversso text-white' : 'text-white hover:bg-white/10' }} flex items-center px-4 py-3 rounded-2xl transition-all text-xs font-black uppercase tracking-widest italic"
                 >
                     Asistencia
                 </a>
 
                 <a
-                    href="{{ route('users.create') }}"
-                    class="{{ request()->routeIs('users.*') ? 'bg-white text-reversso' : 'text-white hover:bg-white/10' }} flex items-center px-4 py-3 rounded-2xl transition-all text-xs font-black uppercase tracking-widest italic"
+                    href="{{ route('users.index') }}"
+                    class="{{ request()->routeIs('users.*') ? 'bg-reversso text-white' : 'text-white hover:bg-white/10' }} flex items-center px-4 py-3 rounded-2xl transition-all text-xs font-black uppercase tracking-widest italic"
                 >
                     Usuarios
                 </a>
@@ -76,8 +100,8 @@
         </nav>
 
         <div class="p-4 border-t border-white/10 bg-black/5">
-            <div class="flex items-center p-3 mb-4 rounded-2xl bg-white/10 border border-white/5">
-                <div class="h-9 w-9 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-reversso font-black text-xs uppercase">
+            <a href="{{ route('profile.show') }}" class="flex items-center p-3 mb-3 rounded-2xl {{ request()->routeIs('profile.*') ? 'bg-white/20 border-white/20' : 'bg-white/10 border-white/5 hover:bg-white/15' }} border transition-all">
+                <div class="h-9 w-9 flex-shrink-0 bg-reversso rounded-xl flex items-center justify-center text-white font-black text-xs uppercase">
                     {{ strtoupper(substr(auth()->user()->name, 0, 2)) }}
                 </div>
                 <div class="ml-3 overflow-hidden text-white">
@@ -86,13 +110,13 @@
                         {{ auth()->user()->roles->first()->display_name ?? 'Usuario' }}
                     </p>
                 </div>
-            </div>
+            </a>
 
             <form action="{{ route('logout') }}" method="POST">
                 @csrf
                 <button
                     type="submit"
-                    class="w-full py-3 bg-orange-700/40 text-white text-[10px] font-black rounded-xl uppercase tracking-widest border border-white/10 hover:bg-orange-700/60 transition-all"
+                    class="w-full py-3 bg-white/10 text-white text-[10px] font-black rounded-xl uppercase tracking-widest border border-white/10 hover:bg-red-500/80 transition-all"
                 >
                     Cerrar Sesión
                 </button>
@@ -252,6 +276,80 @@
 
     setInterval(updateClock, 1000);
     updateClock();
+
+    // =========================================================
+    // SESSION EXPIRATION HANDLER
+    // Intercepta errores 419 (CSRF) y 401 en formularios/fetch
+    // =========================================================
+    document.addEventListener('submit', function(e) {
+        const form = e.target;
+        if (!form || form.tagName !== 'FORM') return;
+
+        // Override fetch para interceptar respuestas
+        const originalFetch = window.fetch;
+        window.fetch = function(...args) {
+            return originalFetch.apply(this, args).then(function(response) {
+                if (response.status === 419 || response.status === 401) {
+                    showSessionExpired();
+                }
+                return response;
+            });
+        };
+    });
+
+    // Interceptar errores en XMLHttpRequest (axios, jquery, etc)
+    (function() {
+        const origOpen = XMLHttpRequest.prototype.open;
+        const origSend = XMLHttpRequest.prototype.send;
+
+        XMLHttpRequest.prototype.open = function(method, url) {
+            this._url = url;
+            return origOpen.apply(this, arguments);
+        };
+
+        XMLHttpRequest.prototype.send = function() {
+            this.addEventListener('load', function() {
+                if (this.status === 419 || this.status === 401) {
+                    showSessionExpired();
+                }
+            });
+            return origSend.apply(this, arguments);
+        };
+    })();
+
+    function showSessionExpired() {
+        // Evitar multiples alertas
+        if (window._sessionExpiredShown) return;
+        window._sessionExpiredShown = true;
+
+        // Crear overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4';
+        overlay.style.backgroundColor = 'rgba(0,0,0,0.8)';
+        overlay.innerHTML = `
+            <div class="bg-white rounded-[30px] p-8 max-w-sm w-full text-center shadow-2xl">
+                <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-black text-gray-900 uppercase italic tracking-tighter mb-2">Sesion Expirada</h3>
+                <p class="text-sm text-gray-500 mb-6">Tu sesion ha expirado por inactividad. Inicia sesion nuevamente.</p>
+                <a href="/login" class="inline-block w-full bg-gray-900 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all">
+                    Ir al Login
+                </a>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    }
+
+    function togglePassword(btn) {
+        const input = btn.parentElement.querySelector('input');
+        const isHidden = input.type === 'password';
+        input.type = isHidden ? 'text' : 'password';
+        btn.querySelector('.eye-off').classList.toggle('hidden', isHidden);
+        btn.querySelector('.eye-on').classList.toggle('hidden', !isHidden);
+    }
 </script>
 </body>
 </html>

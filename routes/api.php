@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Logistics\TimeTracking\Presentation\Http\Controllers\TimeTrackingController;
-use App\Modules\Users\Presentation\Http\Controllers\AuthController;
+use App\Modules\Users\Presentation\Http\Controllers\ApiAuthController;
 use Illuminate\Support\Facades\Route;
 
 // =========================================================================
@@ -13,18 +13,17 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
 
     // =====================================================================
-    // AUTENTICACIÓN (Sin protección JWT)
+    // AUTENTICACION JWT
     // =====================================================================
 
     Route::prefix('auth')->group(function () {
-        Route::post('/register', [AuthController::class, 'register'])->name('auth.register');
-        Route::post('/login', [AuthController::class, 'login'])->name('auth.login');
+        Route::post('/register', [ApiAuthController::class, 'register'])->name('auth.register');
+        Route::post('/login', [ApiAuthController::class, 'login'])->name('auth.login');
 
-        // Rutas protegidas
         Route::middleware('auth:api')->group(function () {
-            Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
-            Route::post('/refresh', [AuthController::class, 'refresh'])->name('auth.refresh');
-            Route::get('/me', [AuthController::class, 'me'])->name('auth.me');
+            Route::post('/logout', [ApiAuthController::class, 'logout'])->name('auth.logout');
+            Route::post('/refresh', [ApiAuthController::class, 'refresh'])->name('auth.refresh');
+            Route::get('/me', [ApiAuthController::class, 'me'])->name('auth.me');
         });
     });
 
@@ -36,30 +35,20 @@ Route::prefix('v1')->group(function () {
 
         // Rutas de conductores
         Route::middleware('role:conductor')->group(function () {
-            Route::post('/start', [TimeTrackingController::class, 'start'])
-                ->name('tracking.start');
-            Route::post('/end', [TimeTrackingController::class, 'end'])
-                ->name('tracking.end');
-            Route::get('/active', [TimeTrackingController::class, 'active'])
-                ->name('tracking.active');
-            Route::get('/my-history', [TimeTrackingController::class, 'myHistory'])
-                ->name('tracking.my-history');
+            Route::post('/start', [TimeTrackingController::class, 'start'])->name('tracking.start');
+            Route::post('/end', [TimeTrackingController::class, 'end'])->name('tracking.end');
+            Route::get('/active', [TimeTrackingController::class, 'active'])->name('tracking.active');
+            Route::get('/my-history', [TimeTrackingController::class, 'myHistory'])->name('tracking.my-history');
         });
 
         // Rutas de administradores
         Route::middleware('role:admin')->group(function () {
-            Route::get('/', [TimeTrackingController::class, 'index'])
-                ->name('tracking.index');
-            Route::get('/{id}', [TimeTrackingController::class, 'show'])
-                ->name('tracking.show');
-            Route::post('/{id}/approve', [TimeTrackingController::class, 'approve'])
-                ->name('tracking.approve');
-            Route::post('/{id}/unapprove', [TimeTrackingController::class, 'unapprove'])
-                ->name('tracking.unapprove');
-            Route::put('/{id}', [TimeTrackingController::class, 'update'])
-                ->name('tracking.update');
-            Route::delete('/{id}', [TimeTrackingController::class, 'destroy'])
-                ->name('tracking.destroy');
+            Route::get('/', [TimeTrackingController::class, 'index'])->name('tracking.index');
+            Route::get('/{id}', [TimeTrackingController::class, 'show'])->name('tracking.show');
+            Route::post('/{id}/approve', [TimeTrackingController::class, 'approve'])->name('tracking.approve');
+            Route::post('/{id}/unapprove', [TimeTrackingController::class, 'unapprove'])->name('tracking.unapprove');
+            Route::put('/{id}', [TimeTrackingController::class, 'update'])->name('tracking.update');
+            Route::delete('/{id}', [TimeTrackingController::class, 'destroy'])->name('tracking.destroy');
         });
     });
 
@@ -69,10 +58,10 @@ Route::prefix('v1')->group(function () {
 
     Route::get('/health', function () {
         return response()->json([
-            'status' => 'ok',
+            'status'    => 'ok',
             'timestamp' => now()->toIso8601String(),
-            'service' => 'REVERSSO CRM API',
-            'version' => 'v1.0.0',
+            'service'   => 'REVERSSO CRM API',
+            'version'   => 'v1.0.0',
         ]);
     })->name('health');
 });

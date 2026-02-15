@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
-use App\Modules\Users\Presentation\Http\Controllers\{AuthController, UserController};
+use App\Modules\Users\Presentation\Http\Controllers\{AuthController, UserController, ProfileController};
 use App\Modules\Logistics\Presentation\Http\Controllers\{
     DashboardController,
     TimeTrackingController,
@@ -47,6 +47,12 @@ Route::middleware(['auth'])->group(function () {
     })->name('dashboard');
 
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
+
+    // ==========================================================
+    // MI PERFIL (todos los usuarios autenticados)
+    // ==========================================================
+    Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
+    Route::put('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password.update');
 
     // ==========================================================
     // MÓDULO: ASISTENCIA
@@ -104,7 +110,13 @@ Route::middleware(['auth'])->group(function () {
     // MÓDULO: USUARIOS (Admin)
     // ==========================================================
     Route::middleware(['role:Administrador'])->prefix('users')->name('users.')->group(function () {
+        Route::get('/', [UserController::class, 'index'])->name('index');
         Route::get('/create', [UserController::class, 'create'])->name('create');
         Route::post('/', [UserController::class, 'store'])->name('store');
+        Route::get('/{id}/edit', [UserController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [UserController::class, 'update'])->name('update');
+        Route::post('/{id}/toggle-active', [UserController::class, 'toggleActive'])->name('toggle-active');
+        Route::get('/{id}/password', [UserController::class, 'editPassword'])->name('password.edit');
+        Route::put('/{id}/password', [UserController::class, 'updatePassword'])->name('password.update');
     });
 });

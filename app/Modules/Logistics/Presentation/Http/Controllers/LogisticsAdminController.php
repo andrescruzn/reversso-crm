@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Logistics\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Logistics\TimeTracking\Infrastructure\Persistence\EloquentTimeTrackingRepository;
+use App\Modules\Logistics\TimeTracking\Domain\Contracts\TimeTrackingRepositoryInterface;
 use App\Modules\Logistics\TimeTracking\Infrastructure\Models\TimeTracking;
 use App\Modules\Users\Infrastructure\Models\User;
 use Exception;
@@ -19,12 +19,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LogisticsAdminController extends Controller
 {
-    protected EloquentTimeTrackingRepository $trackingRepository;
-
-    public function __construct(EloquentTimeTrackingRepository $trackingRepository)
-    {
-        $this->trackingRepository = $trackingRepository;
-    }
+    public function __construct(
+        protected readonly TimeTrackingRepositoryInterface $trackingRepository
+    ) {}
 
     public function index(Request $request): View
     {
@@ -49,9 +46,10 @@ class LogisticsAdminController extends Controller
                 : Carbon::today('America/Bogota')->endOfDay();
 
             // ================================================================
-            // 3) LISTA DE CONDUCTORES (asumiendo roles.id = 2 es Conductor)
+            // 3) LISTA DE CONDUCTORES ACTIVOS
             // ================================================================
-            $drivers = User::whereHas('roles', fn ($q) => $q->where('roles.id', 2))
+            $drivers = User::whereHas('roles', fn ($q) => $q->where('name', 'conductor'))
+                ->where('is_active', true)
                 ->orderBy('name')
                 ->get();
 
@@ -143,7 +141,8 @@ class LogisticsAdminController extends Controller
                 ],
             ]);
         } catch (Exception $e) {
-            dd("Error en Index: " . $e->getMessage());
+            return redirect()->route('dashboard')
+                ->with('error', 'Error al cargar el dashboard: ' . $e->getMessage());
         }
     }
 

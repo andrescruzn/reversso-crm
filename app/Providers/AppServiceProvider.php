@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
-use App\Common\Http\Middleware\RoleMiddleware;
 use App\Modules\Logistics\TimeTracking\Domain\Contracts\TimeTrackingRepositoryInterface;
 use App\Modules\Logistics\TimeTracking\Infrastructure\Repositories\EloquentTimeTrackingRepository;
 use App\Modules\Logistics\Attendance\Domain\Contracts\AttendanceRepositoryInterface;
 use App\Modules\Logistics\Attendance\Infrastructure\Persistence\EloquentAttendanceRepository;
-use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Pagination\Paginator;
 
@@ -46,16 +44,8 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Bootstrap de servicios.
      */
-    public function boot(Router $router): void
+    public function boot(): void
     {
-        // =====================================================================
-        // REGISTRAR MIDDLEWARE DE ROLES
-        // =====================================================================
-        $router->aliasMiddleware('role', RoleMiddleware::class);
-
-        // =====================================================================
-        // CONFIGURAR PAGINACIÓN PARA TAILWIND
-        // =====================================================================
         Paginator::useTailwind();
     }
 }

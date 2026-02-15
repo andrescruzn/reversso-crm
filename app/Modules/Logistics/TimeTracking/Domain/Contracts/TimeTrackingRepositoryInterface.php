@@ -6,6 +6,7 @@ namespace App\Modules\Logistics\TimeTracking\Domain\Contracts;
 
 use App\Modules\Logistics\TimeTracking\Infrastructure\Models\TimeTracking;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as SupportCollection;
 
 /**
  * Contrato del repositorio de Time Tracking.
@@ -69,4 +70,9 @@ interface TimeTrackingRepositoryInterface
      * Revertir aprobación.
      */
     public function unapprove(TimeTracking $tracking): TimeTracking;
+
+    /**
+     * Obtener todos los trackings activos con relación de usuario.
+     */
+    public function getAllActiveWithUsers(?string $search = null): SupportCollection;
 }

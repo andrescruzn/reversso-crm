@@ -27,22 +27,15 @@ class DashboardController extends Controller
 
         // ✅ Admin: NO ve asistencia, NO marca entrada/salida
         if ($user->hasRole('Administrador')) {
-            return view('crm.home-admin', [
+            return view('crm.admin_home', [
                 'user' => $user,
             ]);
         }
 
-        // ✅ Conductor: ve asistencia (la usa el layout para el card)
-        if ($user->hasRole('Conductor')) {
-            return view('crm.home', [
-                'user'             => $user,
-                'activeAttendance' => $this->getActiveAttendance(),
-            ]);
-        }
-
-        // ✅ Otros roles (futuros): home genérico sin asistencia
-        return view('crm.home-generic', [
-            'user' => $user,
+        // ✅ Conductor (y futuros roles operativos): ve asistencia
+        return view('crm.home', [
+            'user'             => $user,
+            'activeAttendance' => $this->getActiveAttendance(),
         ]);
     }
 

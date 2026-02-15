@@ -7,6 +7,7 @@ namespace App\Modules\Logistics\TimeTracking\Infrastructure\Repositories;
 use App\Modules\Logistics\TimeTracking\Domain\Contracts\TimeTrackingRepositoryInterface;
 use App\Modules\Logistics\TimeTracking\Infrastructure\Models\TimeTracking;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as SupportCollection;
 
 /**
  * Repositorio de Time Tracking usando Eloquent.
@@ -113,5 +114,18 @@ class EloquentTimeTrackingRepository implements TimeTrackingRepositoryInterface
             'approved_at' => null,
         ]);
         return $tracking->fresh();
+    }
+
+    public function getAllActiveWithUsers(?string $search = null): SupportCollection
+    {
+        $query = TimeTracking::with('user')->whereNull('end_time');
+
+        if ($search) {
+            $query->whereHas('user', function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%");
+            });
+        }
+
+        return $query->orderBy('start_time', 'desc')->get();
     }
 }

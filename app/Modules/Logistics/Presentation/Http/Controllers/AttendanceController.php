@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Logistics\Attendance\Infrastructure\Models\UserAttendance;
 use App\Modules\Logistics\Overtime\Application\Services\OvertimeCalculatorService;
 use App\Modules\Logistics\TimeTracking\Domain\Contracts\TimeTrackingRepositoryInterface;
+use Illuminate\Support\Facades\Cache;
 use App\Modules\Users\Infrastructure\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -47,7 +48,9 @@ final class AttendanceController extends Controller
         // =====================================================================
         $filters = $this->parseFilters($request);
 
-        $drivers = User::whereHas('roles', fn ($q) => $q->where('name', '!=', 'admin'))->get();
+        $drivers = User::whereHas('roles', fn ($q) => $q->where('name', 'conductor'))
+            ->where('is_active', true)
+            ->get();
 
         // Query base usando Eloquent para consistencia
         $query = $this->getRawAttendanceQuery($filters);
@@ -242,19 +245,16 @@ final class AttendanceController extends Controller
     }
 
     /**
-     * Exportar reporte a CSV.
-     */
-    /**
-     * Exportar reporte a CSV (streaming real, sin cargar todo en memoria).
+     * Exportar reporte a CSV con desglose de horas extras/recargos.
      */
     public function export(Request $request): StreamedResponse
     {
         $filters = $this->parseFilters($request);
 
-        // ✅ Query liviana: solo lo necesario
         $query = UserAttendance::query()
             ->join('users', 'users.id', '=', 'user_attendance.user_id')
             ->select([
+                'user_attendance.user_id',
                 'user_attendance.check_in',
                 'user_attendance.check_out',
                 'user_attendance.is_holiday',
@@ -269,41 +269,82 @@ final class AttendanceController extends Controller
             $query->where('user_attendance.user_id', (int) $filters['user_id']);
         }
 
-        // ✅ Importante: orden estable para stream
-        $query->orderBy('user_attendance.check_in', 'asc');
+        $query->orderBy('users.name', 'asc')->orderBy('user_attendance.check_in', 'asc');
+
+        // Pre-calcular overtime por usuario usando el servicio Colombia
+        $records = $query->get();
+        $userIds = $records->pluck('user_id')->unique();
+
+        $dailyMaps = [];
+        foreach ($userIds as $userId) {
+            $result = $this->overtimeService->calculateOvertimeDailyBreakdown(
+                (int) $userId,
+                (string) $filters['from'],
+                (string) $filters['to']
+            );
+            $payload = is_array($result->data) ? $result->data : [];
+            $dailyMaps[$userId] = (array) ($payload['daily'] ?? []);
+        }
 
         $fileName = 'asistencia_' . now()->format('Ymd_His') . '.csv';
 
-        return response()->stream(function () use ($query) {
-            // (Opcional) evita cortes si el CSV es grande
+        return response()->stream(function () use ($records, $dailyMaps) {
             if (function_exists('set_time_limit')) {
                 @set_time_limit(0);
             }
 
             $file = fopen('php://output', 'w');
-
-            // BOM para Excel
             fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
-            fputcsv($file, ['CONDUCTOR', 'FECHA', 'ENTRADA', 'SALIDA', 'TIEMPO TOTAL', 'TIPO']);
+            fputcsv($file, [
+                'CONDUCTOR',
+                'FECHA',
+                'ENTRADA',
+                'SALIDA',
+                'H. REGULARES',
+                'H. EXTRAS / RECARGOS',
+                'TIEMPO TOTAL',
+                'TIPO',
+            ]);
 
-            // ✅ cursor() = NO carga todo a memoria
-            foreach ($query->cursor() as $row) {
+            foreach ($records as $row) {
                 $checkIn = Carbon::parse($row->check_in);
                 $checkOut = $row->check_out ? Carbon::parse($row->check_out) : null;
+                $day = $checkIn->toDateString();
 
-                $totalMin = $checkOut ? $checkIn->diffInMinutes($checkOut) : 0;
+                $breakdown = $dailyMaps[$row->user_id][$day] ?? [];
+
+                $regularHours = (float) (($breakdown['regular_day'] ?? 0) + ($breakdown['regular_night'] ?? 0));
+
+                $holidayHours = (float) (($breakdown['holiday_day'] ?? 0) + ($breakdown['holiday_night'] ?? 0));
+                $overtimeHolidayHours = (float) (($breakdown['overtime_holiday_day'] ?? 0) + ($breakdown['overtime_holiday_night'] ?? 0));
+                $overtimeHours = (float) (($breakdown['overtime_day'] ?? 0) + ($breakdown['overtime_night'] ?? 0) + $overtimeHolidayHours);
+                $extraForUi = $holidayHours + $overtimeHours;
+
+                $totalHours = (float) ($breakdown['total_hours'] ?? 0);
+
+                $isHoliday = (($holidayHours + $overtimeHolidayHours) > 0) || ((bool) $row->is_holiday);
+
+                $tipo = 'NORMAL';
+                if ($isHoliday && $overtimeHours > 0) {
+                    $tipo = 'FESTIVO + EXTRA';
+                } elseif ($isHoliday) {
+                    $tipo = 'FESTIVO';
+                } elseif ($overtimeHours > 0) {
+                    $tipo = 'EXTRA';
+                }
 
                 fputcsv($file, [
                     $row->user_name,
                     $checkIn->toDateString(),
                     $checkIn->format('H:i'),
                     $checkOut ? $checkOut->format('H:i') : 'PTE',
-                    $this->formatHoursToTime($totalMin / 60),
-                    ((bool) $row->is_holiday) ? 'FESTIVO' : 'NORMAL',
+                    $this->formatHoursToTime($regularHours),
+                    $this->formatHoursToTime($extraForUi),
+                    $this->formatHoursToTime($totalHours),
+                    $tipo,
                 ]);
 
-                // ✅ ayuda a que el navegador reciba datos mientras se genera
                 if (function_exists('ob_flush')) {
                     @ob_flush();
                 }
@@ -337,6 +378,8 @@ final class AttendanceController extends Controller
             'status'     => 'active',
         ]);
 
+        OvertimeCalculatorService::clearCacheForUser($userId);
+
         return redirect()->back()->with('success', 'Jornada iniciada.');
     }
 
@@ -364,6 +407,8 @@ final class AttendanceController extends Controller
             'check_out' => now(),
             'status'    => 'completed',
         ]);
+
+        OvertimeCalculatorService::clearCacheForUser($userId);
 
         return redirect()->route('dashboard')->with('success', 'Jornada finalizada correctamente.');
     }

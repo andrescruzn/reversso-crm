@@ -59,7 +59,7 @@
             </div>
 
             <button type="submit"
-                    class="bg-[#ff5a1f] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition-all shadow-lg shadow-orange-100 js-show-loader">
+                    class="bg-reversso text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-700 transition-all shadow-lg shadow-orange-100 js-show-loader">
                 Filtrar
             </button>
 
@@ -109,7 +109,7 @@
                                 <div class="text-sm font-black text-gray-900 uppercase tracking-tighter">{{ $item->user_name }}</div>
 
                                 @if(!$item->is_summary && $isHolidayEffective)
-                                    <span class="inline-block mt-1 text-[8px] bg-[#ff5a1f] text-white px-2 py-0.5 rounded-full font-black uppercase italic tracking-tighter">
+                                    <span class="inline-block mt-1 text-[8px] bg-[#E8960C] text-white px-2 py-0.5 rounded-full font-black uppercase italic tracking-tighter">
                                         Dominical / Festivo
                                     </span>
                                 @endif
@@ -125,7 +125,7 @@
                             </td>
 
                             <td class="px-8 py-5 text-center text-sm font-black text-gray-700">{{ $item->hours_regular }}</td>
-                            <td class="px-8 py-5 text-center text-sm font-black text-[#ff5a1f]">{{ $item->hours_extra }}</td>
+                            <td class="px-8 py-5 text-center text-sm font-black text-[#E8960C]">{{ $item->hours_extra }}</td>
                             <td class="px-8 py-5 text-right text-sm font-black text-gray-900 italic">{{ $item->total_day }}</td>
                         </tr>
                     @empty
@@ -156,7 +156,7 @@
                             <h3 class="text-sm font-black text-gray-900 uppercase italic">{{ $item->user_name }}</h3>
 
                             @if(!$item->is_summary && $isHolidayEffective)
-                                <span class="inline-block mt-2 text-[8px] bg-[#ff5a1f] text-white px-2 py-0.5 rounded-full font-black uppercase italic tracking-tighter">
+                                <span class="inline-block mt-2 text-[8px] bg-[#E8960C] text-white px-2 py-0.5 rounded-full font-black uppercase italic tracking-tighter">
                                     Dominical / Festivo
                                 </span>
                             @endif
@@ -175,8 +175,8 @@
                         </div>
 
                         <div>
-                            <p class="text-[8px] font-black text-[#ff5a1f] uppercase">Extra</p>
-                            <p class="text-xs font-black text-[#ff5a1f]">{{ $item->hours_extra }}</p>
+                            <p class="text-[8px] font-black text-[#E8960C] uppercase">Extra</p>
+                            <p class="text-xs font-black text-[#E8960C]">{{ $item->hours_extra }}</p>
                         </div>
 
                         <div class="text-right">
@@ -210,8 +210,8 @@
     }
 
     .pagination nav .bg-indigo-600 {
-        background-color: #ff5a1f !important;
-        border-color: #ff5a1f !important;
+        background-color: #E8960C !important;
+        border-color: #E8960C !important;
     }
 </style>
 

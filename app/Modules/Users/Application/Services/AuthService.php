@@ -6,7 +6,6 @@ namespace App\Modules\Users\Application\Services;
 
 use App\Common\Services\ServiceResult;
 use App\Modules\Users\Infrastructure\Models\User;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 
 class AuthService
@@ -14,9 +13,9 @@ class AuthService
     /**
      * Valida credenciales y estado del usuario.
      */
-    public function login(array $credentials): ServiceResult
+    public function login(array $credentials, bool $remember = false): ServiceResult
     {
-        if (!Auth::guard('web')->attempt($credentials)) {
+        if (!Auth::guard('web')->attempt($credentials, $remember)) {
             return ServiceResult::fail('Credenciales incorrectas.', 401);
         }
 
@@ -38,7 +37,7 @@ class AuthService
         $user = User::create([
             'name'      => $data['name'],
             'email'     => $data['email'],
-            'password'  => Hash::make($data['password']),
+            'password'  => $data['password'],
             'is_active' => true,
         ]);
 

@@ -58,10 +58,12 @@
 
     {{-- TABLA EN RUTA --}}
     <div class="bg-white shadow-sm rounded-[40px] border border-gray-100 overflow-hidden mb-8">
-        <div class="px-8 py-5 bg-reversso flex justify-between items-center text-white">
+        <div class="px-6 md:px-8 py-5 bg-reversso flex justify-between items-center text-white">
             <h3 class="font-black text-sm uppercase italic tracking-tighter text-white">Conductores en Ruta</h3>
         </div>
-        <table class="min-w-full divide-y divide-gray-100">
+
+        {{-- Desktop --}}
+        <table class="hidden md:table min-w-full divide-y divide-gray-100">
             <tbody class="divide-y divide-gray-50">
                 @forelse($driversInRoute as $active)
                 <tr>
@@ -76,14 +78,33 @@
                 @endforelse
             </tbody>
         </table>
+
+        {{-- Mobile --}}
+        <div class="md:hidden divide-y divide-gray-50">
+            @forelse($driversInRoute as $active)
+            <div class="p-5">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-xs font-black text-gray-800 uppercase italic">{{ $active->user->name }}</p>
+                        <p class="text-[10px] font-bold text-gray-500 uppercase mt-1">{{ $active->origin }} → {{ $active->destination }}</p>
+                    </div>
+                    <span class="text-[9px] font-black text-reversso uppercase italic tracking-widest">Activo</span>
+                </div>
+            </div>
+            @empty
+            <div class="px-6 py-8 text-center text-[10px] font-black text-gray-300 italic uppercase">No hay conductores en ruta</div>
+            @endforelse
+        </div>
     </div>
 
     {{-- TABLA EN PLANTA --}}
     <div class="bg-white shadow-sm rounded-[40px] border border-gray-100 overflow-hidden mb-8">
-        <div class="px-8 py-5 bg-gray-100 flex justify-between items-center text-gray-500">
+        <div class="px-6 md:px-8 py-5 bg-gray-100 flex justify-between items-center text-gray-500">
             <h3 class="font-black text-sm uppercase italic tracking-tighter text-gray-500">Personal en Planta</h3>
         </div>
-        <table class="min-w-full divide-y divide-gray-100">
+
+        {{-- Desktop --}}
+        <table class="hidden md:table min-w-full divide-y divide-gray-100">
             <tbody class="divide-y divide-gray-50">
                 @forelse($onlyAttendance as $plant)
                 <tr>
@@ -98,15 +119,32 @@
                 @endforelse
             </tbody>
         </table>
+
+        {{-- Mobile --}}
+        <div class="md:hidden divide-y divide-gray-50">
+            @forelse($onlyAttendance as $plant)
+            <div class="p-5 flex justify-between items-center">
+                <div>
+                    <p class="text-xs font-black text-gray-600 uppercase">{{ $plant->user_name }}</p>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase italic mt-1">Entrada: {{ \Carbon\Carbon::parse($plant->start_time)->format('H:i') }}</p>
+                </div>
+                <span class="font-bold text-gray-400 uppercase text-[9px]">En Planta</span>
+            </div>
+            @empty
+            <div class="px-6 py-8 text-center text-[10px] font-black text-gray-300 italic uppercase">No hay personal adicional</div>
+            @endforelse
+        </div>
     </div>
 
     {{-- TABLA HISTORIAL --}}
     <div class="bg-white shadow-sm rounded-[40px] border border-gray-100 overflow-hidden mb-12">
-        <div class="px-8 py-6 bg-gray-900 flex justify-between items-center text-white">
-            <h3 class="font-black text-base uppercase italic tracking-tighter text-white">Historial de Recorridos</h3>
-            <span class="text-[10px] font-black text-orange-400 uppercase italic">Periodo: {{ \Carbon\Carbon::parse($filters['from'])->format('d/m/Y') }}</span>
+        <div class="px-6 md:px-8 py-6 bg-gray-900 flex justify-between items-center text-white">
+            <h3 class="font-black text-sm md:text-base uppercase italic tracking-tighter text-white">Historial de Recorridos</h3>
+            <span class="text-[10px] font-black text-orange-400 uppercase italic">{{ \Carbon\Carbon::parse($filters['from'])->format('d/m/Y') }}</span>
         </div>
-        <div class="overflow-x-auto">
+
+        {{-- Desktop --}}
+        <div class="hidden md:block overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-100">
                 <thead>
                     <tr class="bg-gray-50/50 text-[9px] font-black text-gray-400 uppercase tracking-widest">
@@ -139,9 +177,6 @@
 
                                 @php $currentPage = $completedToday->currentPage(); @endphp
 
-                                {{-- LÓGICA DE BOTONES: MOSTRAR SOLO LO NECESARIO --}}
-
-                                {{-- Si NO está desaprobado (es decir, es pendiente o aprobado), mostrar botón DESAPROBAR --}}
                                 @if($trip->approved_by !== 0)
                                 <form action="{{ route('logistics.disapprove', $trip->id) }}" method="POST" class="inline">
                                     @csrf
@@ -154,7 +189,6 @@
                                 </form>
                                 @endif
 
-                                {{-- Si NO está aprobado (es decir, es pendiente o desaprobado), mostrar botón APROBAR --}}
                                 @if(!$trip->approved_at || $trip->approved_by === 0)
                                 <form action="{{ route('logistics.approve', $trip->id) }}" method="POST" class="inline">
                                     @csrf
@@ -177,8 +211,67 @@
                 </tbody>
             </table>
         </div>
+
+        {{-- Mobile --}}
+        <div class="md:hidden divide-y divide-gray-50">
+            @forelse($completedToday as $trip)
+            <div class="p-5">
+                {{-- Header: conductor + estado --}}
+                <div class="flex justify-between items-start mb-2">
+                    <div>
+                        <p class="text-xs font-black text-gray-800 uppercase italic">{{ $trip->user->name }}</p>
+                        <p class="text-[9px] text-gray-400 italic font-bold mt-0.5">{{ \Carbon\Carbon::parse($trip->end_time)->format('d/m/Y H:i') }}</p>
+                    </div>
+                    @if($trip->approved_by === 0)
+                    <span class="text-[8px] font-black text-red-600 bg-red-50 px-2 py-1 rounded-md uppercase border border-red-100">Desaprobado</span>
+                    @elseif($trip->approved_at)
+                    <span class="text-[8px] font-black text-green-600 bg-green-50 px-2 py-1 rounded-md uppercase border border-green-100">Auditado</span>
+                    @else
+                    <span class="text-[8px] font-black text-orange-500 bg-orange-50 px-2 py-1 rounded-md uppercase border border-orange-100">Pendiente</span>
+                    @endif
+                </div>
+
+                {{-- Ruta --}}
+                <p class="text-[10px] font-bold text-gray-600 uppercase mb-3">{{ $trip->origin }} → {{ $trip->destination }}</p>
+
+                {{-- Acciones --}}
+                <div class="flex items-center gap-2">
+                    <a href="{{ route('logistics.trip.show', $trip->id) }}" class="text-[9px] font-black text-gray-900 border-b-2 border-reversso uppercase italic mr-auto">Detalle</a>
+
+                    @php $currentPage = $completedToday->currentPage(); @endphp
+
+                    @if($trip->approved_by !== 0)
+                    <form action="{{ route('logistics.disapprove', $trip->id) }}" method="POST" class="inline">
+                        @csrf
+                        <input type="hidden" name="from" value="{{ $filters['from'] }}">
+                        <input type="hidden" name="to" value="{{ $filters['to'] }}">
+                        <input type="hidden" name="status" value="{{ $filters['status'] }}">
+                        <input type="hidden" name="search" value="{{ $search }}">
+                        <input type="hidden" name="trips_page" value="{{ $currentPage }}">
+                        <button type="submit" class="bg-red-500 text-white px-3.5 py-1.5 rounded-xl text-[9px] font-black uppercase shadow-md active:scale-95">Desaprobar</button>
+                    </form>
+                    @endif
+
+                    @if(!$trip->approved_at || $trip->approved_by === 0)
+                    <form action="{{ route('logistics.approve', $trip->id) }}" method="POST" class="inline">
+                        @csrf
+                        <input type="hidden" name="from" value="{{ $filters['from'] }}">
+                        <input type="hidden" name="to" value="{{ $filters['to'] }}">
+                        <input type="hidden" name="status" value="{{ $filters['status'] }}">
+                        <input type="hidden" name="search" value="{{ $search }}">
+                        <input type="hidden" name="trips_page" value="{{ $currentPage }}">
+                        <button type="submit" class="bg-green-500 text-white px-3.5 py-1.5 rounded-xl text-[9px] font-black uppercase shadow-md active:scale-95">Aprobar</button>
+                    </form>
+                    @endif
+                </div>
+            </div>
+            @empty
+            <div class="px-6 py-10 text-center text-[10px] font-black text-gray-300 italic uppercase">No hay registros</div>
+            @endforelse
+        </div>
+
         @if($completedToday->hasPages())
-        <div class="px-8 py-6 bg-gray-50 border-t border-gray-100 custom-pagination">{{ $completedToday->links() }}</div>
+        <div class="px-6 md:px-8 py-6 bg-gray-50 border-t border-gray-100 custom-pagination">{{ $completedToday->links() }}</div>
         @endif
     </div>
 </div>

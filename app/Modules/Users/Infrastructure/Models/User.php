@@ -23,6 +23,7 @@ class User extends Authenticatable implements JWTSubject
         'name',
         'email',
         'password',
+        'is_active',
     ];
 
     /**
@@ -75,12 +76,24 @@ class User extends Authenticatable implements JWTSubject
     }
 
     /**
-     * ✅ CORRECCIÓN: Método para verificar múltiples roles (Array).
-     * Este es el método que usaremos en la vista.
+     * Verificar si el usuario tiene alguno de los roles dados.
      */
     public function hasAnyRole(array $roles): bool
     {
-        return $this->roles()->whereIn('display_name', $roles)->exists();
+        return $this->roles()
+            ->where(function ($q) use ($roles) {
+                $q->whereIn('display_name', $roles)
+                  ->orWhereIn('name', $roles);
+            })
+            ->exists();
+    }
+
+    /**
+     * Asignar un rol al usuario (sin duplicar).
+     */
+    public function assignRole(Role $role): void
+    {
+        $this->roles()->syncWithoutDetaching([$role->id]);
     }
 
     // JWT Methods

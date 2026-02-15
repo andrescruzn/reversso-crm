@@ -32,22 +32,22 @@
             </p>
         </a>
 
-        {{-- OTRO MODULO --}}
-        <div class="bg-gray-50/50 p-6 md:p-10 rounded-[30px] md:rounded-[40px] border border-dashed border-gray-300 opacity-60 flex flex-col justify-between">
-            <div>
-                <div class="w-12 h-12 md:w-16 md:h-16 bg-gray-200 rounded-2xl flex items-center justify-center text-gray-400 mb-4 md:mb-6 font-black italic text-lg md:text-xl">
-                    --
-                </div>
+        {{-- USUARIOS --}}
+        <a href="{{ route('users.index') }}"
+           class="group bg-white p-6 md:p-10 rounded-[30px] md:rounded-[40px] border border-gray-100 shadow-sm hover:shadow-2xl hover:border-reversso transition-all flex flex-col items-start text-left">
 
-                <h2 class="text-xl md:text-2xl font-black text-gray-400 mb-2 md:mb-3 tracking-tight uppercase italic">
-                    Próximamente
-                </h2>
-
-                <p class="text-gray-400 text-sm md:text-base leading-relaxed font-medium italic">
-                    Panel en desarrollo...
-                </p>
+            <div class="w-12 h-12 md:w-16 md:h-16 bg-orange-50 rounded-2xl flex items-center justify-center text-reversso mb-4 md:mb-6 group-hover:scale-110 transition-transform font-black italic text-lg md:text-xl">
+                02
             </div>
-        </div>
+
+            <h2 class="text-xl md:text-2xl font-black mb-2 md:mb-3 group-hover:text-reversso tracking-tight transition-colors uppercase italic">
+                Usuarios
+            </h2>
+
+            <p class="text-gray-500 text-sm md:text-base leading-relaxed font-medium">
+                Gestionar cuentas, roles, estados y contraseñas.
+            </p>
+        </a>
 
     </div>
 </div>

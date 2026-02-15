@@ -113,7 +113,9 @@
 
 {{-- 2. GRILLA --}}
 <div class="bg-white rounded-[35px] shadow-2xl border border-gray-100 overflow-hidden text-xs">
-    <div class="overflow-x-auto">
+
+    {{-- VISTA DESKTOP: Tabla --}}
+    <div class="hidden md:block overflow-x-auto">
         <table class="w-full text-left border-collapse">
             <thead>
                 <tr class="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
@@ -222,7 +224,97 @@
         </table>
     </div>
 
-    {{-- ✅ PAGINACIÓN --}}
+    {{-- VISTA MOBILE: Cards --}}
+    <div class="md:hidden divide-y divide-gray-50">
+        @forelse($trips as $trip)
+            @php
+                $deltaKm = null;
+                if ($trip->end_odometer !== null && $trip->start_odometer !== null) {
+                    $deltaKm = max(0, (int)$trip->end_odometer - (int)$trip->start_odometer);
+                }
+            @endphp
+            <div class="p-5">
+                {{-- Header: placa + estado --}}
+                <div class="flex justify-between items-start mb-3">
+                    <div class="flex items-center gap-3">
+                        <span class="bg-gray-900 text-white text-[9px] px-2.5 py-1 rounded-lg font-black shadow-sm">{{ $trip->vehicle_plate ?? 'S/P' }}</span>
+                        <span class="text-[9px] font-bold text-gray-300 uppercase">ID: #{{ $trip->id }}</span>
+                    </div>
+                    <span class="px-3 py-1 rounded-full font-black uppercase text-[8px] border {{ !$trip->end_time ? 'bg-blue-50 text-blue-600 border-blue-100 animate-pulse' : 'bg-gray-50 text-gray-400 border-gray-100' }}">
+                        {{ !$trip->end_time ? 'En Ruta' : 'Cerrado' }}
+                    </span>
+                </div>
+
+                {{-- Ruta --}}
+                <div class="mb-3">
+                    <p class="text-xs font-black uppercase text-gray-900 tracking-tighter">
+                        {{ $trip->origin }}
+                        @if($trip->destination)
+                            <span class="text-reversso mx-1">→</span> {{ $trip->destination }}
+                        @endif
+                    </p>
+                    <p class="text-[10px] text-gray-400 font-bold mt-0.5">
+                        {{ \Carbon\Carbon::parse($trip->start_time)->format('d M, h:i A') }}
+                    </p>
+                </div>
+
+                {{-- Kilometraje --}}
+                <div class="flex items-center justify-between bg-gray-50 rounded-xl p-3 mb-3">
+                    <div>
+                        <span class="text-[8px] font-black text-gray-400 uppercase block">Km Inicio</span>
+                        <span class="text-xs font-black text-gray-700">{{ number_format((int)$trip->start_odometer) }}</span>
+                    </div>
+                    @if($trip->end_odometer !== null)
+                        <div class="text-center">
+                            <span class="text-[8px] font-black text-gray-400 uppercase block">Km Final</span>
+                            <span class="text-xs font-black text-gray-900">{{ number_format((int)$trip->end_odometer) }}</span>
+                        </div>
+                    @endif
+                    @if($deltaKm !== null)
+                        <div class="text-right">
+                            <span class="text-[8px] font-black text-gray-400 uppercase block">Distancia</span>
+                            <span class="text-xs font-black text-reversso">+{{ number_format($deltaKm) }} km</span>
+                        </div>
+                    @endif
+                </div>
+
+                {{-- Acciones --}}
+                <div class="flex items-center gap-2">
+                    @if(!$trip->end_time)
+                        <button
+                            type="button"
+                            onclick="openEndTripModal(this)"
+                            data-id="{{ $trip->id }}"
+                            data-start="{{ (int) $trip->start_odometer }}"
+                            class="flex-1 bg-red-500 text-white px-4 py-2.5 rounded-2xl font-black uppercase text-[9px] text-center hover:bg-red-600 transition-all"
+                        >
+                            Finalizar Viaje
+                        </button>
+                    @endif
+
+                    @if(!empty($trip->observations))
+                        <button
+                            type="button"
+                            onclick="openObservationsModal(@js($trip->observations))"
+                            class="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
+                            title="Ver observaciones"
+                        >
+                            <svg class="w-4 h-4 block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </button>
+                    @endif
+                </div>
+            </div>
+        @empty
+            <div class="p-12 text-center text-gray-300 font-black uppercase text-xs tracking-widest italic">Sin registros</div>
+        @endforelse
+    </div>
+
+    {{-- PAGINACION --}}
     <div class="px-6 py-5 border-t border-gray-100">
         {{ $trips->links() }}
     </div>

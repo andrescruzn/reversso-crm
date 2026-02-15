@@ -20,7 +20,7 @@ class AuthController extends Controller
             'password' => 'required|string',
         ]);
 
-        $result = $this->authService->login($credentials);
+        $result = $this->authService->login($credentials, $request->boolean('remember'));
 
         if ($result->isFailure()) {
             return back()->withErrors(['email' => $result->message])->withInput();
