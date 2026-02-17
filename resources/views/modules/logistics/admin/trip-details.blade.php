@@ -52,17 +52,44 @@
                 </div>
             </div>
 
+            @if($trip->vehicle_plate)
+            <div class="bg-white p-6 rounded-[30px] shadow-sm border border-gray-100">
+                <p class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Vehículo</p>
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-gray-100 rounded-2xl flex-shrink-0 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 17h.01M16 17h.01M5.2 14h13.6c1.12 0 1.68 0 2.108-.218a2 2 0 00.874-.874C22 12.48 22 11.92 22 10.8v-.6c0-1.12 0-1.68-.218-2.108a2 2 0 00-.874-.874C20.48 7 19.92 7 18.8 7H5.2c-1.12 0-1.68 0-2.108.218a2 2 0 00-.874.874C2 8.52 2 9.08 2 10.2v.6c0 1.12 0 1.68.218 2.108a2 2 0 00.874.874C3.52 14 4.08 14 5.2 14zM6.5 17a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm11 0a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM4 7l1.5-4h13L20 7M5 14v3h14v-3"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-lg font-black text-gray-900 uppercase tracking-wider">{{ $trip->vehicle_plate }}</p>
+                        <p class="text-[10px] text-gray-400 uppercase font-bold">Placa</p>
+                    </div>
+                </div>
+            </div>
+            @endif
+
             <div class="bg-white p-6 rounded-[30px] shadow-sm border border-gray-100">
                 <p class="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Registro de Tiempos</p>
                 <div class="space-y-4">
                     <div class="flex flex-col">
                         <span class="text-[9px] font-black text-gray-400 uppercase italic">Inicio de Viaje</span>
                         <span class="text-sm font-bold text-gray-700 leading-tight">{{ \Carbon\Carbon::parse($trip->start_time)->format('d/m/Y - H:i A') }}</span>
+                        @if($trip->origin)
+                        <span class="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+                            <svg class="w-3 h-3 text-reversso" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            {{ $trip->origin }}
+                        </span>
+                        @endif
                     </div>
                     @if($trip->end_time)
                     <div class="flex flex-col">
                         <span class="text-[9px] font-black text-gray-400 uppercase italic">Fin de Viaje</span>
                         <span class="text-sm font-bold text-gray-700 leading-tight">{{ \Carbon\Carbon::parse($trip->end_time)->format('d/m/Y - H:i A') }}</span>
+                        @if($trip->destination)
+                        <span class="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+                            <svg class="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            {{ $trip->destination }}
+                        </span>
+                        @endif
                     </div>
                     @endif
                 </div>
