@@ -338,7 +338,7 @@
             </div>
         @endif
 
-        <form action="{{ route('logistics.start') }}" method="POST" class="space-y-6">
+        <form action="{{ route('logistics.start') }}" method="POST" class="space-y-6" autocomplete="off">
             @csrf
             <div>
                 <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Vehículo (Placa)</label>
@@ -410,7 +410,7 @@
             </div>
         @endif
 
-        <form action="{{ route('logistics.end') }}" method="POST" class="space-y-6">
+        <form action="{{ route('logistics.end') }}" method="POST" class="space-y-6" autocomplete="off">
             @csrf
             <input type="hidden" name="tracking_id" id="end_tracking_id" value="{{ old('tracking_id') }}">
             <div>
