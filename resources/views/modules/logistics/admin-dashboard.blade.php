@@ -69,6 +69,7 @@
                 <tr>
                     <td class="px-8 py-5 text-xs font-black text-gray-800 uppercase italic">{{ $active->user->name }}</td>
                     <td class="px-8 py-5 text-[10px] font-bold text-gray-500 uppercase">{{ $active->origin }} → {{ $active->destination }}</td>
+                    <td class="px-8 py-5 text-[10px] font-bold text-gray-500 uppercase">Inicio: {{ \Carbon\Carbon::parse($active->start_time)->format('H:i') }}</td>
                     <td class="px-8 py-5 text-right"><span class="text-[9px] font-black text-reversso uppercase italic tracking-widest">Viaje Activo</span></td>
                 </tr>
                 @empty
@@ -87,6 +88,7 @@
                     <div>
                         <p class="text-xs font-black text-gray-800 uppercase italic">{{ $active->user->name }}</p>
                         <p class="text-[10px] font-bold text-gray-500 uppercase mt-1">{{ $active->origin }} → {{ $active->destination }}</p>
+                        <p class="text-[10px] font-bold text-gray-400 uppercase italic mt-1">Inicio: {{ \Carbon\Carbon::parse($active->start_time)->format('H:i') }}</p>
                     </div>
                     <span class="text-[9px] font-black text-reversso uppercase italic tracking-widest">Activo</span>
                 </div>
