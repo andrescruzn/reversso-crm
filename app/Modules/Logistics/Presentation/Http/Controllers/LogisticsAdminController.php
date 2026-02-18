@@ -60,7 +60,7 @@ class LogisticsAdminController extends Controller
             $idsInRoute = $driversInRoute->pluck('user_id')->toArray();
 
             // ================================================================
-            // 5) PERSONAL EN PLANTA (tienen asistencia activa hoy y NO están en ruta)
+            // 5) PERSONAL CON ASISTENCIA ACTIVA (NO en ruta)
             // ================================================================
             $onlyAttendance = DB::table('user_attendance')
                 ->join('users', 'users.id', '=', 'user_attendance.user_id')
@@ -76,6 +76,42 @@ class LogisticsAdminController extends Controller
                     'user_attendance.check_in as start_time'
                 )
                 ->get();
+
+            // ================================================================
+            // 5b) Separar EN PLANTA vs FUERA DE BASE
+            //     Solo mira viajes terminados DESPUÉS del check-in de hoy.
+            //     - Sin viajes desde check-in → "En Planta" (acaba de llegar)
+            //     - Último viaje terminó en "Oficina Reversso" → "En Planta"
+            //     - Último viaje terminó en otro destino → "Fuera de Base"
+            // ================================================================
+            $checkInTimes = $onlyAttendance->pluck('start_time', 'user_id')->toArray();
+            $attendanceUserIds = array_keys($checkInTimes);
+
+            $lastDestinations = [];
+            if (!empty($attendanceUserIds)) {
+                foreach ($attendanceUserIds as $uid) {
+                    $dest = DB::table('time_tracking')
+                        ->where('user_id', $uid)
+                        ->whereNotNull('end_time')
+                        ->where('end_time', '>=', $checkInTimes[$uid])
+                        ->orderByDesc('end_time')
+                        ->value('destination');
+
+                    if ($dest !== null) {
+                        $lastDestinations[$uid] = $dest;
+                    }
+                }
+            }
+
+            $inPlant = $onlyAttendance->filter(function ($person) use ($lastDestinations) {
+                $dest = $lastDestinations[$person->user_id] ?? null;
+                return $dest === null || mb_strtolower(trim($dest)) === 'oficina reversso';
+            })->values();
+
+            $outOfBase = $onlyAttendance->filter(function ($person) use ($lastDestinations) {
+                $dest = $lastDestinations[$person->user_id] ?? null;
+                return $dest !== null && mb_strtolower(trim($dest)) !== 'oficina reversso';
+            })->values();
 
             // ================================================================
             // 6) HISTORIAL (solo cerrados) dentro del rango por end_time
@@ -128,11 +164,13 @@ class LogisticsAdminController extends Controller
                 'user'            => Auth::user(),
                 'drivers'         => $drivers,
                 'driversInRoute'  => $driversInRoute,
-                'onlyAttendance'  => $onlyAttendance,
+                'inPlant'         => $inPlant,
+                'outOfBase'       => $outOfBase,
                 'completedToday'  => $history,
                 'totalActive'     => $driversInRoute->count(),
                 'pendingApproval' => $pendingAuditCount,
-                'attendanceToday' => $driversInRoute->count() + $onlyAttendance->count(),
+                'attendanceToday' => $driversInRoute->count() + $inPlant->count(),
+                'outOfBaseCount'  => $outOfBase->count(),
                 'search'          => $search,
                 'filters'         => [
                     'from'   => $fromDate->toDateString(),

@@ -6,7 +6,7 @@
 <div class="max-w-7xl mx-auto px-2 md:px-0">
 
     {{-- MÉTRICAS --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-10">
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6 mb-10">
         <div class="bg-white p-6 rounded-[30px] border border-gray-100 shadow-sm text-center">
             <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">En Ruta</p>
             <p class="text-4xl font-black text-gray-900 mt-2">{{ $totalActive }}</p>
@@ -16,8 +16,12 @@
             <p class="text-4xl font-black text-reversso mt-2">{{ $pendingApproval }}</p>
         </div>
         <div class="bg-white p-6 rounded-[30px] border-l-8 border-l-reversso shadow-sm text-center">
-            <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">En Planta Hoy</p>
+            <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">En Planta</p>
             <p class="text-4xl font-black text-gray-900 mt-2 italic">{{ $attendanceToday }}</p>
+        </div>
+        <div class="bg-white p-6 rounded-[30px] border-l-8 border-l-blue-500 shadow-sm text-center">
+            <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Fuera de Base</p>
+            <p class="text-4xl font-black text-blue-600 mt-2 italic">{{ $outOfBaseCount }}</p>
         </div>
         <div class="bg-white p-6 rounded-[30px] border border-gray-100 shadow-sm text-center">
             <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Total Conductores</p>
@@ -108,7 +112,7 @@
         {{-- Desktop --}}
         <table class="hidden md:table min-w-full divide-y divide-gray-100">
             <tbody class="divide-y divide-gray-50">
-                @forelse($onlyAttendance as $plant)
+                @forelse($inPlant as $plant)
                 <tr>
                     <td class="px-8 py-4 text-xs font-black text-gray-600 uppercase">{{ $plant->user_name }}</td>
                     <td class="px-8 py-4 text-[10px] font-bold text-gray-400 uppercase italic">Entrada: {{ \Carbon\Carbon::parse($plant->start_time)->format('H:i') }}</td>
@@ -116,7 +120,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td class="px-8 py-8 text-center text-[10px] font-black text-gray-300 italic uppercase">No hay personal adicional</td>
+                    <td class="px-8 py-8 text-center text-[10px] font-black text-gray-300 italic uppercase">No hay personal en planta</td>
                 </tr>
                 @endforelse
             </tbody>
@@ -124,7 +128,7 @@
 
         {{-- Mobile --}}
         <div class="md:hidden divide-y divide-gray-50">
-            @forelse($onlyAttendance as $plant)
+            @forelse($inPlant as $plant)
             <div class="p-5 flex justify-between items-center">
                 <div>
                     <p class="text-xs font-black text-gray-600 uppercase">{{ $plant->user_name }}</p>
@@ -133,7 +137,46 @@
                 <span class="font-bold text-gray-400 uppercase text-[9px]">En Planta</span>
             </div>
             @empty
-            <div class="px-6 py-8 text-center text-[10px] font-black text-gray-300 italic uppercase">No hay personal adicional</div>
+            <div class="px-6 py-8 text-center text-[10px] font-black text-gray-300 italic uppercase">No hay personal en planta</div>
+            @endforelse
+        </div>
+    </div>
+
+    {{-- TABLA FUERA DE BASE --}}
+    <div class="bg-white shadow-sm rounded-[40px] border border-gray-100 overflow-hidden mb-8">
+        <div class="px-6 md:px-8 py-5 bg-blue-500 flex justify-between items-center text-white">
+            <h3 class="font-black text-sm uppercase italic tracking-tighter text-white">Fuera de Base</h3>
+        </div>
+
+        {{-- Desktop --}}
+        <table class="hidden md:table min-w-full divide-y divide-gray-100">
+            <tbody class="divide-y divide-gray-50">
+                @forelse($outOfBase as $outside)
+                <tr>
+                    <td class="px-8 py-4 text-xs font-black text-gray-600 uppercase">{{ $outside->user_name }}</td>
+                    <td class="px-8 py-4 text-[10px] font-bold text-gray-400 uppercase italic">Entrada: {{ \Carbon\Carbon::parse($outside->start_time)->format('H:i') }}</td>
+                    <td class="px-8 py-4 text-right font-bold text-blue-500 uppercase text-[9px]">Fuera de Base</td>
+                </tr>
+                @empty
+                <tr>
+                    <td class="px-8 py-8 text-center text-[10px] font-black text-gray-300 italic uppercase">No hay personal fuera de base</td>
+                </tr>
+                @endforelse
+            </tbody>
+        </table>
+
+        {{-- Mobile --}}
+        <div class="md:hidden divide-y divide-gray-50">
+            @forelse($outOfBase as $outside)
+            <div class="p-5 flex justify-between items-center">
+                <div>
+                    <p class="text-xs font-black text-gray-600 uppercase">{{ $outside->user_name }}</p>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase italic mt-1">Entrada: {{ \Carbon\Carbon::parse($outside->start_time)->format('H:i') }}</p>
+                </div>
+                <span class="font-bold text-blue-500 uppercase text-[9px]">Fuera de Base</span>
+            </div>
+            @empty
+            <div class="px-6 py-8 text-center text-[10px] font-black text-gray-300 italic uppercase">No hay personal fuera de base</div>
             @endforelse
         </div>
     </div>
