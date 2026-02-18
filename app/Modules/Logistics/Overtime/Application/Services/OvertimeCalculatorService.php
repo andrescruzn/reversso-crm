@@ -13,23 +13,26 @@ use Illuminate\Support\Facades\Cache;
 /**
  * Servicio de cálculo de horas extras y recargos (Colombia).
  *
- * REGLA DE NEGOCIO:
- * - Clasificar minutos trabajados como:
- *   - Diurno / Nocturno
- *   - Normal / Dominical-Festivo
- *   - Ordinario / Extra (por exceder el límite semanal vigente)
+ * REGLAS DE NEGOCIO:
+ * - Lunes a Viernes: después de 8h diarias = hora extra
+ * - Sábado: después de 1:00 PM = hora extra
+ * - Domingo y Festivos: todas las horas = tarifa festivo (doble)
+ * - Nocturno: 19:00 a 06:00 = recargo 35%
  *
  * OPTIMIZACIÓN:
- * - Usa segmentos (día/noche/medianoche) en lugar de iteración minuto-a-minuto.
+ * - Usa segmentos (día/noche/medianoche/sábado 1PM) en lugar de iteración minuto-a-minuto.
  * - Cachea resultados por usuario+rango para evitar recálculos.
  */
 final class OvertimeCalculatorService
 {
     private const MINUTES_PER_HOUR = 60;
+    private const DAILY_LIMIT_HOURS = 8;
+    private const SATURDAY_CUTOFF_HOUR = 13; // 1:00 PM
+    private const LUNCH_DURATION_MINUTES = 60; // 1 hora de almuerzo
+    private const LUNCH_THRESHOLD_MINUTES = 360; // Se descuenta almuerzo si jornada > 6h
 
     /** Configuración cacheada en memoria para la request actual */
     private ?array $nightConfig = null;
-    private ?array $weeklyLimits = null;
 
     public function __construct(
         private readonly AttendanceRepositoryInterface $attendanceRepository
@@ -53,8 +56,8 @@ final class OvertimeCalculatorService
                 return $this->emptyResult($startDate, $endDate);
             }
 
-            $segmentsByWeek = $this->buildSegmentsByIsoWeek($attendances);
-            $breakdownMinutes = $this->classifySegmentsWithWeeklyLimit($segmentsByWeek);
+            $segmentsByDay = $this->buildSegmentsByDay($attendances);
+            $breakdownMinutes = $this->classifySegmentsWithDailyLimit($segmentsByDay);
             $breakdownHours = $this->minutesBreakdownToHours($breakdownMinutes);
             $surcharges = $this->calculateSurcharges($breakdownHours);
             $totalHours = $this->sumBreakdownHours($breakdownHours);
@@ -92,8 +95,8 @@ final class OvertimeCalculatorService
                 ];
             }
 
-            $segmentsByWeek = $this->buildSegmentsByIsoWeek($attendances);
-            [$totalsMinutes, $dailyMinutes] = $this->classifySegmentsWithWeeklyLimitDaily($segmentsByWeek);
+            $segmentsByDay = $this->buildSegmentsByDay($attendances);
+            [$totalsMinutes, $dailyMinutes] = $this->classifySegmentsWithDailyLimitDaily($segmentsByDay);
 
             $totalsHours = $this->minutesBreakdownToHours($totalsMinutes);
 
@@ -117,19 +120,19 @@ final class OvertimeCalculatorService
     }
 
     // ======================================================================
-    // Construcción de segmentos (reemplazo de minuto-a-minuto)
+    // Construcción de segmentos
     // ======================================================================
 
     /**
-     * Divide cada jornada en segmentos por fronteras (medianoche, día/noche).
-     * En lugar de 480 iteraciones por 8h, genera máximo 3-4 segmentos.
+     * Divide cada jornada en segmentos por fronteras (medianoche, día/noche, sábado 1PM).
+     * Agrupa por día para aplicar límite diario de 8h.
      *
-     * Cada segmento: [weekKey, dayKey, minutes, is_night, is_holiday]
+     * Cada segmento: [day, minutes, is_night, is_holiday, is_saturday_afternoon, timestamp]
      */
-    private function buildSegmentsByIsoWeek(Collection $attendances): array
+    private function buildSegmentsByDay(Collection $attendances): array
     {
         $nightCfg = $this->getNightConfig();
-        $segmentsByWeek = [];
+        $segmentsByDay = [];
 
         foreach ($attendances as $attendance) {
             $start = Carbon::parse($attendance->check_in);
@@ -141,11 +144,9 @@ final class OvertimeCalculatorService
 
             $isHolidayFlag = (bool) ($attendance->is_holiday ?? false);
 
-            // Dividir la jornada en sub-intervalos por fronteras
             $cursor = $start->copy();
 
             while ($cursor->lessThan($end)) {
-                // Calcular la siguiente frontera
                 $nextBoundary = $this->getNextBoundary($cursor, $end, $nightCfg);
                 $minutes = (int) $cursor->diffInMinutes($nextBoundary);
 
@@ -154,17 +155,18 @@ final class OvertimeCalculatorService
                     continue;
                 }
 
-                $weekKey = $cursor->isoFormat('GGGG-[W]WW');
                 $dayKey = $cursor->toDateString();
                 $isNight = $this->isNightHour($cursor->hour, $cursor, $nightCfg);
                 $isHoliday = $isHolidayFlag || $cursor->isSunday();
+                $isSaturdayAfternoon = $cursor->isSaturday() && $cursor->hour >= self::SATURDAY_CUTOFF_HOUR;
 
-                $segmentsByWeek[$weekKey] ??= [];
-                $segmentsByWeek[$weekKey][] = [
+                $segmentsByDay[$dayKey] ??= [];
+                $segmentsByDay[$dayKey][] = [
                     'day' => $dayKey,
                     'minutes' => $minutes,
                     'is_night' => $isNight,
                     'is_holiday' => $isHoliday,
+                    'is_saturday_afternoon' => $isSaturdayAfternoon,
                     'timestamp' => $cursor->getTimestamp(),
                 ];
 
@@ -172,11 +174,12 @@ final class OvertimeCalculatorService
             }
         }
 
-        return $segmentsByWeek;
+        return $segmentsByDay;
     }
 
     /**
-     * Calcula la siguiente frontera temporal (medianoche, inicio/fin nocturno, o fin de jornada).
+     * Calcula la siguiente frontera temporal.
+     * Fronteras: medianoche, inicio/fin nocturno, sábado 1PM, fin de jornada.
      */
     private function getNextBoundary(Carbon $cursor, Carbon $end, array $nightCfg): Carbon
     {
@@ -203,6 +206,14 @@ final class OvertimeCalculatorService
             $boundaries[] = $nightEnd;
         }
 
+        // Frontera sábado 1:00 PM
+        if ($cursor->isSaturday()) {
+            $satCutoff = $cursor->copy()->startOfDay()->addHours(self::SATURDAY_CUTOFF_HOUR);
+            if ($satCutoff->greaterThan($cursor) && $satCutoff->lessThan($end)) {
+                $boundaries[] = $satCutoff;
+            }
+        }
+
         // El fin de jornada siempre es candidato
         $boundaries[] = $end;
 
@@ -213,52 +224,71 @@ final class OvertimeCalculatorService
     }
 
     // ======================================================================
-    // Clasificación con límite semanal (por segmentos)
+    // Clasificación con límite diario de 8h
     // ======================================================================
 
     /**
-     * Clasifica segmentos como ordinarios vs extra por límite semanal.
-     * Versión totales (sin desglose diario).
+     * Clasifica segmentos por día:
+     * - Lun-Vie: primeras 8h trabajo (9h reloj con almuerzo) regulares, el resto extra
+     * - Sábado antes de 1PM: regular, después de 1PM: extra
+     * - Domingo/Festivo: todas las horas a tarifa festivo
+     * - Se descuenta 1h de almuerzo si la jornada reloj > 6h
      */
-    private function classifySegmentsWithWeeklyLimit(array $segmentsByWeek): array
+    private function classifySegmentsWithDailyLimit(array $segmentsByDay): array
     {
         $result = $this->emptyBreakdown();
+        // Límite en tiempo reloj: 8h trabajo + 1h almuerzo = 9h
+        $clockLimitMinutes = (self::DAILY_LIMIT_HOURS * self::MINUTES_PER_HOUR) + self::LUNCH_DURATION_MINUTES;
 
-        foreach ($segmentsByWeek as $segments) {
+        foreach ($segmentsByDay as $segments) {
             usort($segments, fn ($a, $b) => $a['timestamp'] <=> $b['timestamp']);
 
-            $weekStart = Carbon::createFromTimestamp($segments[0]['timestamp'])->startOfWeek(Carbon::MONDAY);
-            $weeklyLimitMinutes = $this->getWeeklyLimitMinutesForDate($weekStart);
-
             $minuteIndex = 0;
+            $totalClockMinutes = 0;
+            $dayRegular = ['regular_day' => 0, 'regular_night' => 0, 'holiday_day' => 0, 'holiday_night' => 0];
 
             foreach ($segments as $seg) {
                 $segMinutes = $seg['minutes'];
+                $totalClockMinutes += $segMinutes;
 
-                // Parte que cae dentro del límite semanal
-                $regularMinutes = 0;
-                $overtimeMinutes = 0;
-
-                if ($minuteIndex >= $weeklyLimitMinutes) {
-                    $overtimeMinutes = $segMinutes;
-                } elseif ($minuteIndex + $segMinutes <= $weeklyLimitMinutes) {
-                    $regularMinutes = $segMinutes;
+                if ($seg['is_holiday']) {
+                    $bucket = $this->resolveBucket(true, $seg['is_night'], false);
+                    $result[$bucket] += $segMinutes;
+                    $dayRegular[$bucket] = ($dayRegular[$bucket] ?? 0) + $segMinutes;
+                } elseif ($seg['is_saturday_afternoon']) {
+                    $bucket = $this->resolveBucket(false, $seg['is_night'], true);
+                    $result[$bucket] += $segMinutes;
                 } else {
-                    $regularMinutes = $weeklyLimitMinutes - $minuteIndex;
-                    $overtimeMinutes = $segMinutes - $regularMinutes;
-                }
+                    $regularMinutes = 0;
+                    $overtimeMinutes = 0;
 
-                if ($regularMinutes > 0) {
-                    $bucket = $this->resolveBucket($seg['is_holiday'], $seg['is_night'], false);
-                    $result[$bucket] += $regularMinutes;
-                }
+                    if ($minuteIndex >= $clockLimitMinutes) {
+                        $overtimeMinutes = $segMinutes;
+                    } elseif ($minuteIndex + $segMinutes <= $clockLimitMinutes) {
+                        $regularMinutes = $segMinutes;
+                    } else {
+                        $regularMinutes = $clockLimitMinutes - $minuteIndex;
+                        $overtimeMinutes = $segMinutes - $regularMinutes;
+                    }
 
-                if ($overtimeMinutes > 0) {
-                    $bucket = $this->resolveBucket($seg['is_holiday'], $seg['is_night'], true);
-                    $result[$bucket] += $overtimeMinutes;
-                }
+                    if ($regularMinutes > 0) {
+                        $bucket = $this->resolveBucket(false, $seg['is_night'], false);
+                        $result[$bucket] += $regularMinutes;
+                        $dayRegular[$bucket] = ($dayRegular[$bucket] ?? 0) + $regularMinutes;
+                    }
 
-                $minuteIndex += $segMinutes;
+                    if ($overtimeMinutes > 0) {
+                        $bucket = $this->resolveBucket(false, $seg['is_night'], true);
+                        $result[$bucket] += $overtimeMinutes;
+                    }
+
+                    $minuteIndex += $segMinutes;
+                }
+            }
+
+            // Descontar 1h de almuerzo de las horas regulares si jornada > 6h
+            if ($totalClockMinutes > self::LUNCH_THRESHOLD_MINUTES) {
+                $this->subtractLunch($result, $dayRegular);
             }
         }
 
@@ -267,51 +297,69 @@ final class OvertimeCalculatorService
 
     /**
      * Clasifica segmentos con desglose diario + totales.
+     * Incluye deducción de 1h almuerzo por día (si jornada > 6h).
      */
-    private function classifySegmentsWithWeeklyLimitDaily(array $segmentsByWeek): array
+    private function classifySegmentsWithDailyLimitDaily(array $segmentsByDay): array
     {
         $totals = $this->emptyBreakdown();
         $daily = [];
+        $clockLimitMinutes = (self::DAILY_LIMIT_HOURS * self::MINUTES_PER_HOUR) + self::LUNCH_DURATION_MINUTES;
 
-        foreach ($segmentsByWeek as $segments) {
+        foreach ($segmentsByDay as $dayKey => $segments) {
             usort($segments, fn ($a, $b) => $a['timestamp'] <=> $b['timestamp']);
 
-            $weekStart = Carbon::createFromTimestamp($segments[0]['timestamp'])->startOfWeek(Carbon::MONDAY);
-            $weeklyLimitMinutes = $this->getWeeklyLimitMinutesForDate($weekStart);
-
             $minuteIndex = 0;
+            $totalClockMinutes = 0;
+            $daily[$dayKey] ??= $this->emptyBreakdown();
+            $dayRegular = ['regular_day' => 0, 'regular_night' => 0, 'holiday_day' => 0, 'holiday_night' => 0];
 
             foreach ($segments as $seg) {
                 $segMinutes = $seg['minutes'];
-                $dayKey = $seg['day'];
+                $totalClockMinutes += $segMinutes;
 
-                $regularMinutes = 0;
-                $overtimeMinutes = 0;
-
-                if ($minuteIndex >= $weeklyLimitMinutes) {
-                    $overtimeMinutes = $segMinutes;
-                } elseif ($minuteIndex + $segMinutes <= $weeklyLimitMinutes) {
-                    $regularMinutes = $segMinutes;
+                if ($seg['is_holiday']) {
+                    $bucket = $this->resolveBucket(true, $seg['is_night'], false);
+                    $totals[$bucket] += $segMinutes;
+                    $daily[$dayKey][$bucket] += $segMinutes;
+                    $dayRegular[$bucket] = ($dayRegular[$bucket] ?? 0) + $segMinutes;
+                } elseif ($seg['is_saturday_afternoon']) {
+                    $bucket = $this->resolveBucket(false, $seg['is_night'], true);
+                    $totals[$bucket] += $segMinutes;
+                    $daily[$dayKey][$bucket] += $segMinutes;
                 } else {
-                    $regularMinutes = $weeklyLimitMinutes - $minuteIndex;
-                    $overtimeMinutes = $segMinutes - $regularMinutes;
+                    $regularMinutes = 0;
+                    $overtimeMinutes = 0;
+
+                    if ($minuteIndex >= $clockLimitMinutes) {
+                        $overtimeMinutes = $segMinutes;
+                    } elseif ($minuteIndex + $segMinutes <= $clockLimitMinutes) {
+                        $regularMinutes = $segMinutes;
+                    } else {
+                        $regularMinutes = $clockLimitMinutes - $minuteIndex;
+                        $overtimeMinutes = $segMinutes - $regularMinutes;
+                    }
+
+                    if ($regularMinutes > 0) {
+                        $bucket = $this->resolveBucket(false, $seg['is_night'], false);
+                        $totals[$bucket] += $regularMinutes;
+                        $daily[$dayKey][$bucket] += $regularMinutes;
+                        $dayRegular[$bucket] = ($dayRegular[$bucket] ?? 0) + $regularMinutes;
+                    }
+
+                    if ($overtimeMinutes > 0) {
+                        $bucket = $this->resolveBucket(false, $seg['is_night'], true);
+                        $totals[$bucket] += $overtimeMinutes;
+                        $daily[$dayKey][$bucket] += $overtimeMinutes;
+                    }
+
+                    $minuteIndex += $segMinutes;
                 }
+            }
 
-                $daily[$dayKey] ??= $this->emptyBreakdown();
-
-                if ($regularMinutes > 0) {
-                    $bucket = $this->resolveBucket($seg['is_holiday'], $seg['is_night'], false);
-                    $totals[$bucket] += $regularMinutes;
-                    $daily[$dayKey][$bucket] += $regularMinutes;
-                }
-
-                if ($overtimeMinutes > 0) {
-                    $bucket = $this->resolveBucket($seg['is_holiday'], $seg['is_night'], true);
-                    $totals[$bucket] += $overtimeMinutes;
-                    $daily[$dayKey][$bucket] += $overtimeMinutes;
-                }
-
-                $minuteIndex += $segMinutes;
+            // Descontar 1h almuerzo si jornada > 6h
+            if ($totalClockMinutes > self::LUNCH_THRESHOLD_MINUTES) {
+                $this->subtractLunch($totals, $dayRegular);
+                $this->subtractLunch($daily[$dayKey], $dayRegular);
             }
         }
 
@@ -321,6 +369,29 @@ final class OvertimeCalculatorService
     // ======================================================================
     // Helpers
     // ======================================================================
+
+    /**
+     * Resta 1h de almuerzo de los buckets regulares.
+     * Prioridad: regular_day > holiday_day > regular_night > holiday_night
+     *
+     * @param array &$breakdown Referencia al breakdown donde restar
+     * @param array $available Minutos disponibles por bucket para este día
+     */
+    private function subtractLunch(array &$breakdown, array $available): void
+    {
+        $remaining = self::LUNCH_DURATION_MINUTES;
+
+        foreach (['regular_day', 'holiday_day', 'regular_night', 'holiday_night'] as $bucket) {
+            if ($remaining <= 0) {
+                break;
+            }
+            $canSubtract = min($remaining, $available[$bucket] ?? 0);
+            if ($canSubtract > 0) {
+                $breakdown[$bucket] -= $canSubtract;
+                $remaining -= $canSubtract;
+            }
+        }
+    }
 
     private function emptyBreakdown(): array
     {
@@ -383,26 +454,6 @@ final class OvertimeCalculatorService
         $startHour = $this->getEffectiveNightStartHour($date, $nightCfg);
         $endHour = (int) $nightCfg['end_hour'];
         return $hour >= $startHour || $hour < $endHour;
-    }
-
-    private function getWeeklyLimitMinutesForDate(Carbon $dateInWeek): int
-    {
-        if ($this->weeklyLimits === null) {
-            $this->weeklyLimits = (array) config('overtime.weekly_limits');
-        }
-
-        foreach ($this->weeklyLimits as $rule) {
-            $from = Carbon::parse((string) $rule['from'])->startOfDay();
-            $to = isset($rule['to']) && $rule['to']
-                ? Carbon::parse((string) $rule['to'])->endOfDay()
-                : null;
-
-            if ($dateInWeek->betweenIncluded($from, $to ?? $dateInWeek->copy()->addYears(50))) {
-                return ((int) $rule['hours']) * self::MINUTES_PER_HOUR;
-            }
-        }
-
-        return 44 * self::MINUTES_PER_HOUR;
     }
 
     private function minutesBreakdownToHours(array $breakdownMinutes): array
@@ -493,7 +544,6 @@ final class OvertimeCalculatorService
      */
     public static function clearCacheForUser(int $userId): void
     {
-        // Limpia patrón conocido: mes actual y anterior
         $now = Carbon::now();
         $ranges = [
             [$now->copy()->startOfMonth()->toDateString(), $now->toDateString()],
