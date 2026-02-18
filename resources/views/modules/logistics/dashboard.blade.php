@@ -342,26 +342,34 @@
             @csrf
             <div>
                 <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Vehículo (Placa)</label>
-                <input
-                    type="text"
-                    name="vehicle_plate"
-                    value="{{ old('vehicle_plate') }}"
-                    required
-                    class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none uppercase"
-                    placeholder="ABC-123"
-                >
+                <div class="relative combobox-wrapper">
+                    <input
+                        type="text"
+                        name="vehicle_plate"
+                        id="vehicle_plate"
+                        value="{{ old('vehicle_plate') }}"
+                        required
+                        autocomplete="off"
+                        class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none uppercase"
+                        placeholder="ABC-123"
+                    >
+                </div>
             </div>
 
             <div>
                 <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Punto de Origen</label>
-                <input
-                    type="text"
-                    name="origin"
-                    value="{{ old('origin') }}"
-                    required
-                    class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none"
-                    placeholder="¿Dónde inicias?"
-                >
+                <div class="relative combobox-wrapper">
+                    <input
+                        type="text"
+                        name="origin"
+                        id="origin"
+                        value="{{ old('origin') }}"
+                        required
+                        autocomplete="off"
+                        class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none"
+                        placeholder="¿Dónde inicias?"
+                    >
+                </div>
             </div>
 
             <div>
@@ -418,7 +426,9 @@
             </div>
             <div>
                 <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Destino Final</label>
-                <input type="text" name="destination" value="{{ old('destination') }}" required class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none" placeholder="¿A dónde llegaste?">
+                <div class="relative combobox-wrapper">
+                    <input type="text" name="destination" id="destination" value="{{ old('destination') }}" required autocomplete="off" class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none" placeholder="¿A dónde llegaste?">
+                </div>
             </div>
 
             <div>
@@ -546,6 +556,101 @@
     function closeObservationsModal() {
         document.getElementById('modal-view-obs').classList.add('hidden');
     }
+
+    /**
+     * Combobox autocompletable reutilizable.
+     * Crea un dropdown de sugerencias debajo del input.
+     */
+    function initCombobox(inputId, suggestions) {
+        const input = document.getElementById(inputId);
+        if (!input || !suggestions.length) return;
+
+        const wrapper = input.closest('.combobox-wrapper');
+        if (!wrapper) return;
+
+        // Crear dropdown
+        const dropdown = document.createElement('div');
+        dropdown.className = 'absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-lg max-h-48 overflow-y-auto z-50 hidden';
+        wrapper.appendChild(dropdown);
+
+        let activeIndex = -1;
+        let filtered = [];
+
+        function render() {
+            dropdown.innerHTML = '';
+            activeIndex = -1;
+
+            const query = input.value.trim().toLowerCase();
+            if (!query) {
+                dropdown.classList.add('hidden');
+                return;
+            }
+
+            filtered = suggestions.filter(s => s.toLowerCase().includes(query));
+            if (!filtered.length) {
+                dropdown.classList.add('hidden');
+                return;
+            }
+
+            filtered.forEach((item, i) => {
+                const opt = document.createElement('div');
+                opt.textContent = item;
+                opt.className = 'px-4 py-2.5 text-sm font-bold text-gray-700 cursor-pointer hover:bg-orange-50 hover:text-reversso transition-colors';
+                if (i === 0) opt.classList.add('rounded-t-2xl');
+                if (i === filtered.length - 1) opt.classList.add('rounded-b-2xl');
+                opt.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    input.value = item;
+                    dropdown.classList.add('hidden');
+                    input.focus();
+                });
+                dropdown.appendChild(opt);
+            });
+
+            dropdown.classList.remove('hidden');
+        }
+
+        function highlight(idx) {
+            const items = dropdown.children;
+            for (let i = 0; i < items.length; i++) {
+                items[i].classList.toggle('bg-orange-50', i === idx);
+                items[i].classList.toggle('text-reversso', i === idx);
+            }
+        }
+
+        input.addEventListener('input', render);
+        input.addEventListener('focus', render);
+
+        input.addEventListener('keydown', function (e) {
+            if (dropdown.classList.contains('hidden')) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeIndex = Math.min(activeIndex + 1, filtered.length - 1);
+                highlight(activeIndex);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeIndex = Math.max(activeIndex - 1, 0);
+                highlight(activeIndex);
+            } else if (e.key === 'Enter' && activeIndex >= 0) {
+                e.preventDefault();
+                input.value = filtered[activeIndex];
+                dropdown.classList.add('hidden');
+            } else if (e.key === 'Escape') {
+                dropdown.classList.add('hidden');
+            }
+        });
+
+        input.addEventListener('blur', function () {
+            // Small delay to allow mousedown on option
+            setTimeout(() => dropdown.classList.add('hidden'), 150);
+        });
+    }
+
+    // Inicializar comboboxes
+    initCombobox('vehicle_plate', @json($plates));
+    initCombobox('origin', @json($locations));
+    initCombobox('destination', @json($locations));
 </script>
 
 @endsection

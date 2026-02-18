@@ -70,6 +70,27 @@ class DashboardController extends Controller
         // ✅ Paginación
         $trips = $baseQuery->paginate(10)->withQueryString();
 
+        // Ubicaciones previas (orígenes + destinos) para autocompletado
+        $locations = TimeTracking::where('user_id', (int) $user->id)
+            ->selectRaw('DISTINCT origin as location')
+            ->union(
+                TimeTracking::where('user_id', (int) $user->id)
+                    ->whereNotNull('destination')
+                    ->selectRaw('DISTINCT destination as location')
+            )
+            ->pluck('location')
+            ->unique()
+            ->sort()
+            ->values();
+
+        // Placas previas para autocompletado
+        $plates = TimeTracking::where('user_id', (int) $user->id)
+            ->whereNotNull('vehicle_plate')
+            ->distinct()
+            ->pluck('vehicle_plate')
+            ->sort()
+            ->values();
+
         return view('modules.logistics.dashboard', [
             'user'             => $user,
             'trips'            => $trips,
@@ -77,6 +98,8 @@ class DashboardController extends Controller
             'activeTracking'   => $this->trackingRepository->findActiveByUserId((int) $user->id),
             'activeAttendance' => $this->getActiveAttendance(), // <- para bloquear "Iniciar viaje" si no hay jornada
             'metrics'          => $metrics,
+            'locations'        => $locations,
+            'plates'           => $plates,
         ]);
     }
 
