@@ -4,28 +4,39 @@ if (($_GET['key'] ?? '') !== 'reversso2026') {
     die('Acceso denegado.');
 }
 
-require dirname(__DIR__) . '/vendor/autoload.php';
-$app = require dirname(__DIR__) . '/bootstrap/app.php';
-$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-$kernel->bootstrap();
-
 echo '<pre style="font-family:monospace;font-size:13px;padding:20px;background:#111;color:#0f0;">';
 echo "=== REVERSSO CRM — Clear Cache ===\n\n";
 
-$commands = ['view:clear', 'cache:clear', 'config:clear', 'route:clear', 'event:clear'];
+$base = dirname(__DIR__);
 
-foreach ($commands as $cmd) {
-    Illuminate\Support\Facades\Artisan::call($cmd);
-    $output = trim(Illuminate\Support\Facades\Artisan::output());
-    echo "▶ php artisan {$cmd}\n";
-    echo ($output ?: 'OK') . "\n\n";
+// 1. Vistas compiladas de Blade
+$viewsPath = $base . '/storage/framework/views';
+$deleted = 0;
+foreach (glob($viewsPath . '/*.php') ?: [] as $file) {
+    if (unlink($file)) $deleted++;
 }
+echo "▶ Vistas Blade borradas: {$deleted} archivos\n\n";
 
+// 2. Cache de la aplicación (archivo o carpeta data/)
+$cachePath = $base . '/storage/framework/cache/data';
+$cacheDeleted = 0;
+$it = new RecursiveIteratorIterator(
+    new RecursiveDirectoryIterator($cachePath, FilesystemIterator::SKIP_DOTS),
+    RecursiveIteratorIterator::CHILD_FIRST
+);
+foreach ($it as $file) {
+    if ($file->isFile() && $file->getFilename() !== '.gitignore') {
+        if (unlink($file->getPathname())) $cacheDeleted++;
+    }
+}
+echo "▶ Cache app borrado: {$cacheDeleted} archivos\n\n";
+
+// 3. OPcache
 if (function_exists('opcache_reset')) {
     opcache_reset();
     echo "▶ OPcache reseteado ✓\n\n";
 } else {
-    echo "▶ OPcache: no disponible\n\n";
+    echo "▶ OPcache: no disponible en este servidor\n\n";
 }
 
 echo "=== Listo. BORRA ESTE ARCHIVO. ===\n";
