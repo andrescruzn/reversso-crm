@@ -69,29 +69,6 @@
             </a>
         </form>
 
-        {{-- AVISO: detalle paginado + botón refrescar (solo cuando filtras un usuario) --}}
-        @if(!empty($filters['user_id']))
-            <div class=”mb-6 bg-white border border-gray-100 shadow-sm rounded-2xl px-5 py-4 flex items-center justify-between gap-4”>
-                <div>
-                    <p class=”text-[10px] font-black uppercase tracking-widest text-gray-700”>
-                        Detalle paginado
-                    </p>
-                    <p class=”text-[10px] font-bold text-gray-500 italic mt-1”>
-                        Lo que ves abajo está paginado (15 filas por página). El “Acumulado del mes” corresponde a todo el rango filtrado.
-                    </p>
-                </div>
-
-                <button type=”button”
-                        onclick=”window.location.href='/attendance/refresh-cache/{{ (int)$filters['user_id'] }}'”
-                        class=”bg-gray-100 text-gray-600 px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-200 transition-all flex items-center gap-2 whitespace-nowrap active:scale-95”>
-                    <svg class=”w-4 h-4 shrink-0” fill=”none” stroke=”currentColor” viewBox=”0 0 24 24”>
-                        <path stroke-linecap=”round” stroke-linejoin=”round” stroke-width=”2” d=”M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15” />
-                    </svg>
-                    Refrescar
-                </button>
-            </div>
-        @endif
-
         {{-- TABLA --}}
         <div class="bg-white shadow-sm rounded-[40px] border border-gray-100 overflow-hidden hidden md:block">
             <table class="min-w-full divide-y divide-gray-100">
