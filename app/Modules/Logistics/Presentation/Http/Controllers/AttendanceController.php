@@ -363,6 +363,16 @@ final class AttendanceController extends Controller
         ]);
     }
 
+    /**
+     * Fuerza el recálculo del overtime de un usuario limpiando su caché.
+     */
+    public function refreshCache(Request $request, int $userId): RedirectResponse
+    {
+        OvertimeCalculatorService::clearCacheForUser($userId);
+
+        return redirect()->back()->with('success', 'Caché de horas actualizado. Los valores se recalcularán ahora.');
+    }
+
     public function checkIn(Request $request): RedirectResponse
     {
         $userId = (int) Auth::id();

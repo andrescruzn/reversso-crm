@@ -69,6 +69,7 @@ Route::middleware(['auth'])->group(function () {
         Route::middleware(['role:Administrador'])->group(function () {
             Route::get('/report', [AttendanceController::class, 'index'])->name('report');
             Route::get('/export', [AttendanceController::class, 'export'])->name('export');
+            Route::post('/refresh-cache/{userId}', [AttendanceController::class, 'refreshCache'])->name('refresh-cache');
         });
     });
 

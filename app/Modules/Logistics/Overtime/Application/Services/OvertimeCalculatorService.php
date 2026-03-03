@@ -39,6 +39,14 @@ final class OvertimeCalculatorService
     ) {}
 
     /**
+     * Obtener versión de caché de un usuario (se incrementa al invalidar).
+     */
+    private static function getCacheVersion(int $userId): int
+    {
+        return (int) Cache::get("overtime_version:{$userId}", 0);
+    }
+
+    /**
      * Calcular horas y recargos de un usuario en un rango.
      */
     public function calculateOvertime(
@@ -46,7 +54,8 @@ final class OvertimeCalculatorService
         string $startDate,
         string $endDate
     ): ServiceResult {
-        $cacheKey = "overtime:{$userId}:{$startDate}:{$endDate}";
+        $v = self::getCacheVersion($userId);
+        $cacheKey = "overtime:{$userId}:v{$v}:{$startDate}:{$endDate}";
 
         $data = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($userId, $startDate, $endDate) {
             $attendances = $this->attendanceRepository
@@ -81,7 +90,8 @@ final class OvertimeCalculatorService
         string $startDate,
         string $endDate
     ): ServiceResult {
-        $cacheKey = "overtime_daily:{$userId}:{$startDate}:{$endDate}";
+        $v = self::getCacheVersion($userId);
+        $cacheKey = "overtime_daily:{$userId}:v{$v}:{$startDate}:{$endDate}";
 
         $data = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($userId, $startDate, $endDate) {
             $attendances = $this->attendanceRepository
@@ -540,19 +550,11 @@ final class OvertimeCalculatorService
     }
 
     /**
-     * Invalidar caché de un usuario (llamar al hacer check-in/check-out).
+     * Invalidar TODO el caché de un usuario incrementando su versión.
+     * Funciona con cualquier rango de fechas sin necesidad de conocerlos.
      */
     public static function clearCacheForUser(int $userId): void
     {
-        $now = Carbon::now();
-        $ranges = [
-            [$now->copy()->startOfMonth()->toDateString(), $now->toDateString()],
-            [$now->copy()->subMonth()->startOfMonth()->toDateString(), $now->copy()->subMonth()->endOfMonth()->toDateString()],
-        ];
-
-        foreach ($ranges as [$start, $end]) {
-            Cache::forget("overtime:{$userId}:{$start}:{$end}");
-            Cache::forget("overtime_daily:{$userId}:{$start}:{$end}");
-        }
+        Cache::increment("overtime_version:{$userId}");
     }
 }
