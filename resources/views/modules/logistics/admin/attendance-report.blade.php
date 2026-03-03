@@ -1,5 +1,5 @@
 @extends('layouts.crm')
-
+{{-- v2 --}}
 @section('module_title', 'Logística / Reporte de Asistencia')
 
 @section('content')
