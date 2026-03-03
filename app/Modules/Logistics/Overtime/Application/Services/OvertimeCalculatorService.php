@@ -28,8 +28,6 @@ final class OvertimeCalculatorService
     private const MINUTES_PER_HOUR = 60;
     private const DAILY_LIMIT_HOURS = 8;
     private const SATURDAY_CUTOFF_HOUR = 13; // 1:00 PM
-    private const LUNCH_DURATION_MINUTES = 60; // 1 hora de almuerzo
-    private const LUNCH_THRESHOLD_MINUTES = 360; // Se descuenta almuerzo si jornada > 6h
 
     /** Configuración cacheada en memoria para la request actual */
     private ?array $nightConfig = null;
@@ -239,32 +237,26 @@ final class OvertimeCalculatorService
 
     /**
      * Clasifica segmentos por día:
-     * - Lun-Vie: primeras 8h trabajo (9h reloj con almuerzo) regulares, el resto extra
+     * - Lun-Vie: primeras 8h regulares, el resto extra
      * - Sábado antes de 1PM: regular, después de 1PM: extra
      * - Domingo/Festivo: todas las horas a tarifa festivo
-     * - Se descuenta 1h de almuerzo si la jornada reloj > 6h
      */
     private function classifySegmentsWithDailyLimit(array $segmentsByDay): array
     {
         $result = $this->emptyBreakdown();
-        // Límite en tiempo reloj: 8h trabajo + 1h almuerzo = 9h
-        $clockLimitMinutes = (self::DAILY_LIMIT_HOURS * self::MINUTES_PER_HOUR) + self::LUNCH_DURATION_MINUTES;
+        $clockLimitMinutes = self::DAILY_LIMIT_HOURS * self::MINUTES_PER_HOUR;
 
         foreach ($segmentsByDay as $segments) {
             usort($segments, fn ($a, $b) => $a['timestamp'] <=> $b['timestamp']);
 
             $minuteIndex = 0;
-            $totalClockMinutes = 0;
-            $dayRegular = ['regular_day' => 0, 'regular_night' => 0, 'holiday_day' => 0, 'holiday_night' => 0];
 
             foreach ($segments as $seg) {
                 $segMinutes = $seg['minutes'];
-                $totalClockMinutes += $segMinutes;
 
                 if ($seg['is_holiday']) {
                     $bucket = $this->resolveBucket(true, $seg['is_night'], false);
                     $result[$bucket] += $segMinutes;
-                    $dayRegular[$bucket] = ($dayRegular[$bucket] ?? 0) + $segMinutes;
                 } elseif ($seg['is_saturday_afternoon']) {
                     $bucket = $this->resolveBucket(false, $seg['is_night'], true);
                     $result[$bucket] += $segMinutes;
@@ -284,7 +276,6 @@ final class OvertimeCalculatorService
                     if ($regularMinutes > 0) {
                         $bucket = $this->resolveBucket(false, $seg['is_night'], false);
                         $result[$bucket] += $regularMinutes;
-                        $dayRegular[$bucket] = ($dayRegular[$bucket] ?? 0) + $regularMinutes;
                     }
 
                     if ($overtimeMinutes > 0) {
@@ -295,11 +286,6 @@ final class OvertimeCalculatorService
                     $minuteIndex += $segMinutes;
                 }
             }
-
-            // Descontar 1h de almuerzo de las horas regulares si jornada > 6h
-            if ($totalClockMinutes > self::LUNCH_THRESHOLD_MINUTES) {
-                $this->subtractLunch($result, $dayRegular);
-            }
         }
 
         return $result;
@@ -307,31 +293,27 @@ final class OvertimeCalculatorService
 
     /**
      * Clasifica segmentos con desglose diario + totales.
-     * Incluye deducción de 1h almuerzo por día (si jornada > 6h).
+     * Incluye desglose por día.
      */
     private function classifySegmentsWithDailyLimitDaily(array $segmentsByDay): array
     {
         $totals = $this->emptyBreakdown();
         $daily = [];
-        $clockLimitMinutes = (self::DAILY_LIMIT_HOURS * self::MINUTES_PER_HOUR) + self::LUNCH_DURATION_MINUTES;
+        $clockLimitMinutes = self::DAILY_LIMIT_HOURS * self::MINUTES_PER_HOUR;
 
         foreach ($segmentsByDay as $dayKey => $segments) {
             usort($segments, fn ($a, $b) => $a['timestamp'] <=> $b['timestamp']);
 
             $minuteIndex = 0;
-            $totalClockMinutes = 0;
             $daily[$dayKey] ??= $this->emptyBreakdown();
-            $dayRegular = ['regular_day' => 0, 'regular_night' => 0, 'holiday_day' => 0, 'holiday_night' => 0];
 
             foreach ($segments as $seg) {
                 $segMinutes = $seg['minutes'];
-                $totalClockMinutes += $segMinutes;
 
                 if ($seg['is_holiday']) {
                     $bucket = $this->resolveBucket(true, $seg['is_night'], false);
                     $totals[$bucket] += $segMinutes;
                     $daily[$dayKey][$bucket] += $segMinutes;
-                    $dayRegular[$bucket] = ($dayRegular[$bucket] ?? 0) + $segMinutes;
                 } elseif ($seg['is_saturday_afternoon']) {
                     $bucket = $this->resolveBucket(false, $seg['is_night'], true);
                     $totals[$bucket] += $segMinutes;
@@ -353,7 +335,6 @@ final class OvertimeCalculatorService
                         $bucket = $this->resolveBucket(false, $seg['is_night'], false);
                         $totals[$bucket] += $regularMinutes;
                         $daily[$dayKey][$bucket] += $regularMinutes;
-                        $dayRegular[$bucket] = ($dayRegular[$bucket] ?? 0) + $regularMinutes;
                     }
 
                     if ($overtimeMinutes > 0) {
@@ -365,12 +346,6 @@ final class OvertimeCalculatorService
                     $minuteIndex += $segMinutes;
                 }
             }
-
-            // Descontar 1h almuerzo si jornada > 6h
-            if ($totalClockMinutes > self::LUNCH_THRESHOLD_MINUTES) {
-                $this->subtractLunch($totals, $dayRegular);
-                $this->subtractLunch($daily[$dayKey], $dayRegular);
-            }
         }
 
         return [$totals, $daily];
@@ -379,29 +354,6 @@ final class OvertimeCalculatorService
     // ======================================================================
     // Helpers
     // ======================================================================
-
-    /**
-     * Resta 1h de almuerzo de los buckets regulares.
-     * Prioridad: regular_day > holiday_day > regular_night > holiday_night
-     *
-     * @param array &$breakdown Referencia al breakdown donde restar
-     * @param array $available Minutos disponibles por bucket para este día
-     */
-    private function subtractLunch(array &$breakdown, array $available): void
-    {
-        $remaining = self::LUNCH_DURATION_MINUTES;
-
-        foreach (['regular_day', 'holiday_day', 'regular_night', 'holiday_night'] as $bucket) {
-            if ($remaining <= 0) {
-                break;
-            }
-            $canSubtract = min($remaining, $available[$bucket] ?? 0);
-            if ($canSubtract > 0) {
-                $breakdown[$bucket] -= $canSubtract;
-                $remaining -= $canSubtract;
-            }
-        }
-    }
 
     private function emptyBreakdown(): array
     {
