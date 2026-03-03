@@ -81,16 +81,13 @@
                     </p>
                 </div>
 
-                <form method=”POST” action=”{{ route('attendance.refresh-cache', $filters['user_id']) }}”>
-                    @csrf
-                    <button type=”submit”
-                            class=”bg-gray-100 text-gray-600 px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-200 transition-all flex items-center gap-2 whitespace-nowrap active:scale-95”>
-                        <svg class=”w-4 h-4 shrink-0” fill=”none” stroke=”currentColor” viewBox=”0 0 24 24”>
-                            <path stroke-linecap=”round” stroke-linejoin=”round” stroke-width=”2” d=”M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15” />
-                        </svg>
-                        Refrescar
-                    </button>
-                </form>
+                <a href=”{{ url('attendance/refresh-cache/' . $filters['user_id']) }}”
+                   class=”bg-gray-100 text-gray-600 px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-200 transition-all flex items-center gap-2 whitespace-nowrap active:scale-95”>
+                    <svg class=”w-4 h-4 shrink-0” fill=”none” stroke=”currentColor” viewBox=”0 0 24 24”>
+                        <path stroke-linecap=”round” stroke-linejoin=”round” stroke-width=”2” d=”M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15” />
+                    </svg>
+                    Refrescar
+                </a>
             </div>
         @endif
 
