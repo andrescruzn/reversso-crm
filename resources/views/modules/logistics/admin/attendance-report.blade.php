@@ -85,9 +85,6 @@
                       action=”{{ route('attendance.refresh-cache', $filters['user_id']) }}”
                       class=”flex items-center”>
                     @csrf
-                    @foreach(request()->except(['_token']) as $key => $val)
-                        <input type=”hidden” name=”{{ $key }}” value=”{{ $val }}”>
-                    @endforeach
                     <button type=”submit”
                             class=”w-full md:w-auto bg-white border border-gray-200 text-gray-600 px-5 py-4 md:py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all shadow-sm flex items-center gap-2 active:scale-95 js-show-loader”>
                         <svg class=”w-4 h-4” fill=”none” stroke=”currentColor” viewBox=”0 0 24 24”>
