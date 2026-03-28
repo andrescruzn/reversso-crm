@@ -504,9 +504,14 @@ final class OvertimeCalculatorService
     /**
      * Invalidar TODO el caché de un usuario incrementando su versión.
      * Funciona con cualquier rango de fechas sin necesidad de conocerlos.
+     *
+     * NOTA: Cache::increment() falla silenciosamente con el driver 'database'
+     * cuando el key no existe. Se usa put() explícito para garantizar el incremento.
      */
     public static function clearCacheForUser(int $userId): void
     {
-        Cache::increment("overtime_version:{$userId}");
+        $key = "overtime_version:{$userId}";
+        $current = (int) Cache::get($key, 0);
+        Cache::put($key, $current + 1, now()->addDays(90));
     }
 }

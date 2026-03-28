@@ -6,7 +6,6 @@ namespace Database\Seeders;
 
 use App\Modules\Users\Infrastructure\Models\{Role, User};
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 
 class AdminUserSeeder extends Seeder
 {
@@ -34,7 +33,7 @@ class AdminUserSeeder extends Seeder
             ['email' => 'admin@reversso.com'],
             [
                 'name' => 'Admin Reversso',
-                'password' => Hash::make('admin123'),
+                'password' => 'admin123',
                 'is_active' => true,
                 'email_verified_at' => now(),
             ]
@@ -57,7 +56,7 @@ class AdminUserSeeder extends Seeder
                 ['email' => $c['email']],
                 [
                     'name' => $c['name'],
-                    'password' => Hash::make('conductor123'),
+                    'password' => 'conductor123',
                     'is_active' => true,
                     'email_verified_at' => now(),
                 ]

@@ -94,18 +94,16 @@
                             </button>
                         </form>
                     @else
-                        <form action="{{ route('attendance.checkin') }}" method="POST" class="w-full md:w-auto">
-                            @csrf
-                            <button
-                                type="submit"
-                                class="w-full md:w-auto bg-white hover:bg-gray-100 text-gray-900 px-6 md:px-8 py-4 rounded-2xl font-black uppercase text-[10px] md:text-xs tracking-widest shadow-xl transition-all inline-flex items-center justify-center gap-3"
-                            >
-                                <svg class="w-5 h-5 text-reversso" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
-                                </svg>
-                                Marcar entrada
-                            </button>
-                        </form>
+                        <button
+                            type="button"
+                            onclick="toggleGlobalModal('modal-attendance-global')"
+                            class="w-full md:w-auto bg-white hover:bg-gray-100 text-gray-900 px-6 md:px-8 py-4 rounded-2xl font-black uppercase text-[10px] md:text-xs tracking-widest shadow-xl transition-all inline-flex items-center justify-center gap-3"
+                        >
+                            <svg class="w-5 h-5 text-reversso" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+                            </svg>
+                            Marcar entrada
+                        </button>
                     @endif
                 </div>
 

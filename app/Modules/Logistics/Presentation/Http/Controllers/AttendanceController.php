@@ -373,6 +373,127 @@ final class AttendanceController extends Controller
         return redirect()->back()->with('success', 'Caché de horas actualizado. Los valores se recalcularán ahora.');
     }
 
+    public function myHistory(Request $request): \Illuminate\View\View
+    {
+        $userId = (int) Auth::id();
+
+        $from = $request->get('from') ?? now()->startOfMonth()->toDateString();
+        $to   = $request->get('to')   ?? now()->toDateString();
+
+        $records = UserAttendance::where('user_id', $userId)
+            ->whereNotNull('check_out')
+            ->whereBetween('check_in', [
+                Carbon::parse($from)->startOfDay(),
+                Carbon::parse($to)->endOfDay(),
+            ])
+            ->orderBy('check_in', 'desc')
+            ->paginate(15)
+            ->withQueryString();
+
+        // Totales del rango completo (sin paginar)
+        $totals = UserAttendance::where('user_id', $userId)
+            ->whereNotNull('check_out')
+            ->whereBetween('check_in', [
+                Carbon::parse($from)->startOfDay(),
+                Carbon::parse($to)->endOfDay(),
+            ])
+            ->selectRaw('COUNT(*) as days, SUM(TIMESTAMPDIFF(MINUTE, check_in, check_out)) as total_minutes')
+            ->first();
+
+        return view('modules.attendance.my-history', [
+            'records' => $records,
+            'filters' => ['from' => $from, 'to' => $to],
+            'totals'  => $totals,
+        ]);
+    }
+
+    public function manualAttendance(Request $request): RedirectResponse
+    {
+        $userId = (int) Auth::id();
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'check_in'   => ['required', 'date'],
+            'check_out'  => ['required', 'date', 'after:check_in'],
+            'is_holiday' => ['nullable', 'boolean'],
+        ], [
+            'check_in.required'  => 'La fecha y hora de entrada es obligatoria.',
+            'check_in.date'      => 'La fecha de entrada no es válida.',
+            'check_out.required' => 'La fecha y hora de salida es obligatoria.',
+            'check_out.date'     => 'La fecha de salida no es válida.',
+            'check_out.after'    => 'La hora de salida debe ser posterior a la de entrada.',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('open_modal', 'modal-manual-attendance')
+                ->withErrors($validator->errors(), 'manualAttendance');
+        }
+
+        $data = $validator->validated();
+
+        $checkIn  = Carbon::parse($data['check_in']);
+        $checkOut = Carbon::parse($data['check_out']);
+
+        // Verificar solapamiento con registros existentes del usuario
+        $overlap = UserAttendance::where('user_id', $userId)
+            ->where(function ($q) use ($checkIn, $checkOut) {
+                $q->whereBetween('check_in', [$checkIn, $checkOut])
+                  ->orWhereBetween('check_out', [$checkIn, $checkOut])
+                  ->orWhere(function ($q2) use ($checkIn, $checkOut) {
+                      $q2->where('check_in', '<=', $checkIn)
+                         ->where('check_out', '>=', $checkOut);
+                  });
+            })
+            ->exists();
+
+        if ($overlap) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('open_modal', 'modal-manual-attendance')
+                ->withErrors(
+                    ['check_in' => 'El rango de horas se solapa con un registro de asistencia existente.'],
+                    'manualAttendance'
+                );
+        }
+
+        UserAttendance::create([
+            'user_id'    => $userId,
+            'check_in'   => $checkIn,
+            'check_out'  => $checkOut,
+            'is_holiday' => $request->boolean('is_holiday'),
+            'status'     => 'completed',
+        ]);
+
+        OvertimeCalculatorService::clearCacheForUser($userId);
+
+        return redirect()->back()->with('success', 'Asistencia registrada correctamente.');
+    }
+
+    public function deleteManual(int $id): RedirectResponse
+    {
+        $userId = (int) Auth::id();
+
+        $record = UserAttendance::where('id', $id)
+            ->where('user_id', $userId)
+            ->where('status', 'completed')
+            ->whereNotNull('check_out')
+            ->first();
+
+        if (!$record) {
+            return redirect()->back()->with('error', 'Registro no encontrado o no tienes permiso para eliminarlo.');
+        }
+
+        $record->delete();
+
+        // ⚠️ CRÍTICO: invalidar caché SIEMPRE que se toque user_attendance
+        OvertimeCalculatorService::clearCacheForUser($userId);
+
+        return redirect()->back()->with('success', 'Registro de asistencia eliminado. Las horas extra se recalcularán.');
+    }
+
     public function checkIn(Request $request): RedirectResponse
     {
         $userId = (int) Auth::id();

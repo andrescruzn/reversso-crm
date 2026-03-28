@@ -6,7 +6,7 @@
 
 {{-- 1. HEADER --}}
 <div class="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-6 mb-8">
-    <div>
+    <div class="flex flex-col lg:flex-row items-start lg:items-center gap-3">
         @if(!$activeTracking)
 
             {{-- ✅ Si NO hay jornada activa, NO permitir iniciar viaje --}}
@@ -47,6 +47,18 @@
                 </div>
             </div>
         @endif
+
+        {{-- Siempre visible: registrar viaje pasado --}}
+        <button
+            type="button"
+            onclick="toggleGlobalModal('modal-manual-trip')"
+            class="w-full lg:w-auto bg-white border border-gray-200 text-gray-700 px-6 py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:border-reversso hover:text-reversso transition-all flex items-center justify-center gap-3"
+        >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Registrar Viaje Pasado
+        </button>
     </div>
 
     {{-- FILTROS --}}
@@ -212,6 +224,23 @@
                                         </svg>
                                     </button>
                                 @endif
+
+                                @if($trip->end_time)
+                                    <form action="{{ route('logistics.manual-trip.delete', $trip->id) }}" method="POST"
+                                          data-confirm="¿Eliminar este viaje? Esta acción no se puede deshacer.">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit"
+                                            class="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 transition-all"
+                                            title="Eliminar viaje"
+                                        >
+                                            <svg class="w-4 h-4 block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </button>
+                                    </form>
+                                @endif
                             </div>
                         </td>
                     </tr>
@@ -306,6 +335,23 @@
                                       d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
                         </button>
+                    @endif
+
+                    @if($trip->end_time)
+                        <form action="{{ route('logistics.manual-trip.delete', $trip->id) }}" method="POST"
+                              data-confirm="¿Eliminar este viaje? Esta acción no se puede deshacer.">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit"
+                                class="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 transition-all"
+                                title="Eliminar viaje"
+                            >
+                                <svg class="w-4 h-4 block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </form>
                     @endif
                 </div>
             </div>
@@ -453,6 +499,164 @@
     </div>
 </div>
 
+{{-- ========================================================= --}}
+{{-- MODAL VIAJE MANUAL (RETROACTIVO) --}}
+{{-- ========================================================= --}}
+<div id="modal-manual-trip" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="toggleGlobalModal('modal-manual-trip')"></div>
+
+    <div class="relative bg-white w-full max-w-lg rounded-[40px] p-10 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <button onclick="toggleGlobalModal('modal-manual-trip')" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+
+        <h3 class="text-2xl font-black text-gray-900 mb-6 uppercase italic text-center tracking-tighter">Viaje Pasado</h3>
+
+        @if($errors->hasBag('manualTrip') && $errors->manualTrip->any())
+            <div class="mb-4 p-4 bg-red-50 text-red-700 text-[10px] font-black uppercase rounded-xl">
+                @foreach($errors->manualTrip->all() as $error)
+                    <p>{{ $error }}</p>
+                @endforeach
+            </div>
+        @endif
+
+        <form action="{{ route('logistics.manual-trip') }}" method="POST" class="space-y-5" autocomplete="off">
+            @csrf
+
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Vehículo (Placa)</label>
+                <div class="relative combobox-wrapper">
+                    <input
+                        type="text"
+                        name="vehicle_plate"
+                        id="mt_vehicle_plate"
+                        value="{{ old('vehicle_plate') }}"
+                        required
+                        autocomplete="off"
+                        class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none uppercase"
+                        placeholder="ABC-123"
+                    >
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Fecha y hora de inicio</label>
+                <input
+                    type="datetime-local"
+                    name="start_time"
+                    value="{{ old('start_time') }}"
+                    required
+                    class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none"
+                >
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Fecha y hora de fin</label>
+                <input
+                    type="datetime-local"
+                    name="end_time"
+                    value="{{ old('end_time') }}"
+                    required
+                    class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none"
+                >
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Origen</label>
+                <div class="relative combobox-wrapper">
+                    <input
+                        type="text"
+                        name="origin"
+                        id="mt_origin"
+                        value="{{ old('origin') }}"
+                        required
+                        autocomplete="off"
+                        class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none"
+                        placeholder="¿Dónde iniciaste?"
+                    >
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Destino</label>
+                <div class="relative combobox-wrapper">
+                    <input
+                        type="text"
+                        name="destination"
+                        id="mt_destination"
+                        value="{{ old('destination') }}"
+                        required
+                        autocomplete="off"
+                        class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none"
+                        placeholder="¿A dónde llegaste?"
+                    >
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Km Inicial</label>
+                    <input
+                        type="number"
+                        name="start_odometer"
+                        value="{{ old('start_odometer') }}"
+                        required
+                        min="0"
+                        class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none"
+                        placeholder="00000"
+                    >
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Km Final</label>
+                    <input
+                        type="number"
+                        name="end_odometer"
+                        value="{{ old('end_odometer') }}"
+                        required
+                        min="0"
+                        class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none"
+                        placeholder="00000"
+                    >
+                </div>
+            </div>
+
+            <div class="p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:border-orange-200 transition-colors cursor-pointer group"
+                 onclick="document.getElementById('mt_is_holiday').click()">
+                <div class="flex items-center justify-between">
+                    <label for="mt_is_holiday" class="text-xs font-black text-gray-700 uppercase italic cursor-pointer group-hover:text-reversso transition-colors">
+                        ¿Es día Festivo?
+                    </label>
+                    <div class="relative flex items-center">
+                        <input type="checkbox" name="is_holiday" value="1" id="mt_is_holiday"
+                               {{ old('is_holiday') ? 'checked' : '' }}
+                               class="peer h-5 w-5 cursor-pointer appearance-none rounded-md border border-gray-300 transition-all checked:border-orange-500 checked:bg-orange-500">
+                        <svg class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 pointer-events-none"
+                             fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2 tracking-widest">Observaciones</label>
+                <textarea
+                    name="observations"
+                    rows="3"
+                    class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-reversso outline-none resize-none"
+                    placeholder="Opcional: novedades del viaje..."
+                >{{ old('observations') }}</textarea>
+            </div>
+
+            <button type="submit" class="w-full bg-gray-900 hover:bg-black text-white font-black py-5 rounded-2xl uppercase text-xs tracking-widest shadow-xl transition-all">
+                Registrar Viaje
+            </button>
+        </form>
+    </div>
+</div>
+
 {{-- MODAL VER OBSERVACIONES --}}
 <div id="modal-view-obs" class="hidden fixed inset-0 z-[110] flex items-center justify-center p-4">
     <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeObservationsModal()"></div>
@@ -495,6 +699,12 @@
                 if (input) input.value = trackingId;
             }
             const el = document.getElementById('modal-end-trip');
+            if (el) el.classList.remove('hidden');
+            return;
+        }
+
+        if (openModal === 'modal-manual-trip') {
+            const el = document.getElementById('modal-manual-trip');
             if (el) el.classList.remove('hidden');
             return;
         }
@@ -647,10 +857,15 @@
         });
     }
 
-    // Inicializar comboboxes
+    // Inicializar comboboxes (modal inicio viaje)
     initCombobox('vehicle_plate', @json($plates));
     initCombobox('origin', @json($locations));
     initCombobox('destination', @json($locations));
+
+    // Inicializar comboboxes (modal viaje manual)
+    initCombobox('mt_vehicle_plate', @json($plates));
+    initCombobox('mt_origin', @json($locations));
+    initCombobox('mt_destination', @json($locations));
 </script>
 
 @endsection

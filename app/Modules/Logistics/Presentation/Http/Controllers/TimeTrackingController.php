@@ -14,6 +14,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
 /**
@@ -147,6 +148,90 @@ class TimeTrackingController extends Controller
         return redirect()
             ->back()
             ->with('success', $result->message);
+    }
+
+    /**
+     * Registra un viaje pasado de forma manual (retroactivo).
+     */
+    public function manualTrip(Request $request): RedirectResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'vehicle_plate'  => ['required', 'string', 'max:10'],
+            'origin'         => ['required', 'string', 'max:255'],
+            'destination'    => ['required', 'string', 'max:255'],
+            'start_time'     => ['required', 'date'],
+            'end_time'       => ['required', 'date', 'after:start_time'],
+            'start_odometer' => ['required', 'numeric', 'min:0'],
+            'end_odometer'   => ['required', 'numeric', 'gte:start_odometer'],
+            'is_holiday'     => ['nullable', 'boolean'],
+            'observations'   => ['nullable', 'string', 'max:1000'],
+        ], [
+            'vehicle_plate.required'  => 'La placa del vehículo es obligatoria.',
+            'origin.required'         => 'El punto de origen es obligatorio.',
+            'destination.required'    => 'El destino es obligatorio.',
+            'start_time.required'     => 'La fecha/hora de inicio es obligatoria.',
+            'start_time.date'         => 'La fecha de inicio no es válida.',
+            'end_time.required'       => 'La fecha/hora de fin es obligatoria.',
+            'end_time.date'           => 'La fecha de fin no es válida.',
+            'end_time.after'          => 'La hora de fin debe ser posterior a la de inicio.',
+            'start_odometer.required' => 'El odómetro inicial es obligatorio.',
+            'start_odometer.numeric'  => 'El odómetro inicial debe ser un número.',
+            'end_odometer.required'   => 'El odómetro final es obligatorio.',
+            'end_odometer.numeric'    => 'El odómetro final debe ser un número.',
+            'end_odometer.gte'        => 'El odómetro final debe ser mayor o igual al inicial.',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('open_modal', 'modal-manual-trip')
+                ->withErrors($validator->errors(), 'manualTrip');
+        }
+
+        $data = $validator->validated();
+
+        TimeTracking::create([
+            'user_id'        => (int) Auth::id(),
+            'vehicle_plate'  => strtoupper(trim((string) $data['vehicle_plate'])),
+            'origin'         => trim((string) $data['origin']),
+            'destination'    => trim((string) $data['destination']),
+            'start_time'     => Carbon::parse($data['start_time']),
+            'end_time'       => Carbon::parse($data['end_time']),
+            'start_odometer' => (int) $data['start_odometer'],
+            'end_odometer'   => (int) $data['end_odometer'],
+            'is_holiday'     => $request->boolean('is_holiday'),
+            'observations'   => $data['observations'] ?? null,
+            'approved_by'    => null,
+            'approved_at'    => null,
+        ]);
+
+        return redirect()->back()->with('success', 'Viaje registrado. Quedará pendiente de aprobación del administrador.');
+    }
+
+    /**
+     * Elimina un viaje manual del conductor (solo si no está en ruta activa).
+     */
+    public function deleteManualTrip(int $id): RedirectResponse
+    {
+        $userId = (int) Auth::id();
+
+        $trip = TimeTracking::where('id', $id)
+            ->where('user_id', $userId)
+            ->whereNotNull('end_time')
+            ->first();
+
+        if (!$trip) {
+            return redirect()->back()->with('error', 'Viaje no encontrado o no tienes permiso para eliminarlo.');
+        }
+
+        if ($trip->end_time === null) {
+            return redirect()->back()->with('error', 'No puedes eliminar un viaje en curso. Finalízalo primero.');
+        }
+
+        $trip->delete();
+
+        return redirect()->back()->with('success', 'Viaje eliminado correctamente.');
     }
 
     /**

@@ -81,6 +81,16 @@
                 </a>
             @endif
 
+            {{-- ✅ Asistencia: Conductor ve su propio historial --}}
+            @if(auth()->user()->hasRole('Conductor'))
+                <a
+                    href="{{ route('attendance.my-history') }}"
+                    class="{{ request()->routeIs('attendance.my-history') ? 'bg-reversso text-white' : 'text-white hover:bg-white/10' }} flex items-center px-4 py-3 rounded-2xl transition-all"
+                >
+                    <span class="font-black text-xs uppercase tracking-widest italic">Asistencia</span>
+                </a>
+            @endif
+
             {{-- ✅ Menú solo Admin --}}
             @if(auth()->user()->hasRole('Administrador'))
                 <a
@@ -244,6 +254,43 @@
     </div>
 @endif
 
+{{-- =========================================================  --}}
+{{-- MODAL CONFIRMACIÓN GLOBAL (reemplaza confirm() nativo)  --}}
+{{-- =========================================================  --}}
+<div id="modal-confirm-global" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+
+    <div class="relative bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl animate-in">
+
+        {{-- Icono --}}
+        <div class="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+            <svg class="w-7 h-7 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+        </div>
+
+        {{-- Mensaje --}}
+        <p id="confirm-msg" class="text-center text-sm font-bold text-gray-700 leading-relaxed mb-8">
+            ¿Estás seguro?
+        </p>
+
+        {{-- Botones --}}
+        <div class="flex gap-3">
+            <button id="confirm-cancel"
+                type="button"
+                class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest transition-all">
+                Cancelar
+            </button>
+            <button id="confirm-ok"
+                type="button"
+                class="flex-1 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest shadow-lg shadow-red-600/20 transition-all">
+                Eliminar
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
     function toggleSidebar() {
         const sidebar = document.getElementById('sidebar');
@@ -350,6 +397,55 @@
         btn.querySelector('.eye-off').classList.toggle('hidden', isHidden);
         btn.querySelector('.eye-on').classList.toggle('hidden', !isHidden);
     }
+
+    // =========================================================
+    // MODAL DE CONFIRMACIÓN GLOBAL
+    // Reemplaza el confirm() nativo del navegador.
+    // Uso: <form onsubmit="return false" data-confirm="¿Seguro?">
+    //   o desde JS: confirmAction('¿Seguro?', () => form.submit())
+    // =========================================================
+    (function () {
+        const modal   = document.getElementById('modal-confirm-global');
+        const msgEl   = document.getElementById('confirm-msg');
+        const btnOk   = document.getElementById('confirm-ok');
+        const btnCancel = document.getElementById('confirm-cancel');
+
+        let _resolve = null;
+
+        function openConfirm(message) {
+            if (!modal) return Promise.resolve(true);
+            msgEl.textContent = message;
+            modal.classList.remove('hidden');
+            btnOk.focus();
+            return new Promise(res => { _resolve = res; });
+        }
+
+        function close(value) {
+            modal.classList.add('hidden');
+            if (_resolve) { _resolve(value); _resolve = null; }
+        }
+
+        btnOk.addEventListener('click',     () => close(true));
+        btnCancel.addEventListener('click', () => close(false));
+        modal.addEventListener('click', e => { if (e.target === modal) close(false); });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && !modal.classList.contains('hidden')) close(false);
+        });
+
+        // API global
+        window.confirmAction = function (message, onConfirm) {
+            openConfirm(message).then(ok => { if (ok && onConfirm) onConfirm(); });
+        };
+
+        // Interceptar forms con data-confirm
+        document.addEventListener('submit', function (e) {
+            const form = e.target;
+            const msg  = form.getAttribute('data-confirm');
+            if (!msg) return;
+            e.preventDefault();
+            openConfirm(msg).then(ok => { if (ok) { form.removeAttribute('data-confirm'); form.submit(); } });
+        }, true);
+    })();
 </script>
 </body>
 </html>

@@ -63,6 +63,9 @@ Route::middleware(['auth'])->group(function () {
         Route::middleware(['role:Conductor'])->group(function () {
             Route::post('/check-in', [AttendanceController::class, 'checkIn'])->name('checkin');
             Route::post('/check-out', [AttendanceController::class, 'checkOut'])->name('checkout');
+            Route::post('/manual', [AttendanceController::class, 'manualAttendance'])->name('manual');
+            Route::delete('/manual/{id}', [AttendanceController::class, 'deleteManual'])->name('manual.delete');
+            Route::get('/my-history', [AttendanceController::class, 'myHistory'])->name('my-history');
         });
 
         // Reportes solo para Administrador
@@ -94,6 +97,8 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/start', [TimeTrackingController::class, 'start'])->name('start');
             Route::post('/end', [TimeTrackingController::class, 'end'])->name('end');
             Route::get('/history', [TimeTrackingController::class, 'history'])->name('history');
+            Route::post('/manual-trip', [TimeTrackingController::class, 'manualTrip'])->name('manual-trip');
+            Route::delete('/manual-trip/{id}', [TimeTrackingController::class, 'deleteManualTrip'])->name('manual-trip.delete');
         });
 
         // ------------------------------------------
